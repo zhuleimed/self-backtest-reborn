@@ -7,9 +7,6 @@
   3. 停牌日处理
 """
 
-from typing import Dict, Optional, Tuple
-
-import os
 from typing import Optional, Tuple
 
 import numpy as np
@@ -173,10 +170,6 @@ class RiskManager:
                 pass  # 重新买入由下一循环处理
 
         return result
-
-    # ------------------------------------------------------------------
-    # 停牌日处理（简化版：直接在 equity_curve 模块中处理）
-    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # 移动止盈止损（trailing stop）

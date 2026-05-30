@@ -40,11 +40,6 @@ class BacktestConfig:
     end_date: str = ''
     benchmark_code: str = 'sh.000300'  # 沪深300
 
-    # 大盘环境过滤
-    index_filter_code: str = ''         # 大盘指数代码（如 hushen300），空=不启用过滤
-    index_filter_ma: int = 20           # 均线周期
-    index_filter_drop: float = -0.03    # 急跌阈值
-
     # 资金与交易参数
     initial_money_per_stock: float = 10_000.0
     slippage: float = 0.003
@@ -101,7 +96,6 @@ class BacktestEngine:
 
         self._stock_datas: Dict[str, pd.DataFrame] = {}
         self._stock_results: List[Dict] = []
-        self._index_data: Optional[pd.DataFrame] = None
         self._benchmark_data: Optional[pd.DataFrame] = None
         self._account_data: Optional[pd.DataFrame] = None
         self._metrics: Optional[BacktestMetrics] = None
@@ -150,9 +144,7 @@ class BacktestEngine:
         logger.info('[1/5] 加载数据…')
         self._load_stock_data()
         self._load_benchmark_data()
-        self._load_index_data()
-        logger.info(f'  ✓ 加载 {len(self._stock_datas)} 只股票, 1 个基准指数'
-                    f'{", 1 个大盘指数" if self._index_data is not None else ""}')
+        logger.info(f'  ✓ 加载 {len(self._stock_datas)} 只股票, 1 个基准指数')
 
         # ---- Step 2: 信号生成 ----
         logger.info('[2/5] 生成交易信号…')
@@ -193,25 +185,6 @@ class BacktestEngine:
             cfg.benchmark_code, cfg.start_date, cfg.end_date,
         )
 
-    def _load_index_data(self):
-        """加载大盘指数数据（用于市场环境过滤）"""
-        cfg = self.config
-        if not cfg.index_filter_code:
-            return
-        index_path = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)),
-            '..', '..', 'data', 'input', 'index_k_data',
-            f'{cfg.index_filter_code}.csv'
-        )
-        if os.path.exists(index_path):
-            df = pd.read_csv(index_path)
-            df['date'] = pd.to_datetime(df['date'])
-            df = df.sort_values('date').reset_index(drop=True)
-            self._index_data = df
-            logger.info(f'  加载大盘指数: {cfg.index_filter_code} ({len(df)} 行)')
-        else:
-            logger.warning(f'  大盘指数文件不存在: {index_path}, 跳过过滤')
-
     def _generate_signals(self):
         for code, df in self._stock_datas.items():
             self._stock_datas[code] = self.signal_engine.generate(df)
@@ -240,15 +213,6 @@ class BacktestEngine:
                     df, self.signal_name,
                     trailing_stop_pct=cfg.trailing_stop_pct,
                     trailing_profit_pct=cfg.trailing_profit_pct,
-                )
-
-            # 大盘环境过滤（如果启用）
-            if cfg.index_filter_code and self._index_data is not None:
-                df = self.risk_manager.apply_market_filter(
-                    df, self._index_data,
-                    index_code=cfg.index_filter_code,
-                    ma_period=cfg.index_filter_ma,
-                    drop_threshold=cfg.index_filter_drop,
                 )
 
             # 信号修正
