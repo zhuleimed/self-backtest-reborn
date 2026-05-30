@@ -35,13 +35,28 @@ class ComparisonResult:
 class StrategyComparator:
     """多策略对比器"""
 
-    _CJK_FONT_PATH = '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf'
-    _CJK_FONT_NAME = 'Droid Sans Fallback'
+    # 中文字体配置（与 reporter.py 保持一致）
+    _CJK_FONTS = [
+        ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'Droid Sans Fallback'),
+        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK SC'),
+    ]
+    _PATH_CACHE = '~/.cache/matplotlib'
 
     def __init__(self, output_dir: str):
+        self._base_output_dir = output_dir
         self.output_dir = output_dir
         self._results: List[ComparisonResult] = []
         self._setup_matplotlib()
+
+    def _ensure_dated_dir(self):
+        """创建日期/时间分层输出目录并更新 self.output_dir"""
+        now = datetime.now()
+        self.output_dir = os.path.join(
+            self._base_output_dir,
+            now.strftime('%Y%m%d'),
+            now.strftime('%H%M'),
+        )
+        os.makedirs(self.output_dir, exist_ok=True)
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -105,6 +120,8 @@ class StrategyComparator:
         if not self._results:
             raise RuntimeError('没有对比结果，请先调用 add_strategy 或 compare')
 
+        # 创建日期/时间分层输出目录
+        self._ensure_dated_dir()
         ts = datetime.now().strftime('%Y%m%d_%H%M')
 
         # ---- 对比 CSV ----
@@ -165,15 +182,31 @@ class StrategyComparator:
         print(f'  📊 对比曲线图 → {path}')
 
     def _setup_matplotlib(self):
-        """配置中文字体"""
+        """配置 Matplotlib 中文字体（与 reporter.py 一致的方案）"""
+        # 清除字体缓存
+        cache_dir = os.path.expanduser(self._PATH_CACHE)
+        if os.path.isdir(cache_dir):
+            for fname in os.listdir(cache_dir):
+                if fname.startswith('fontlist'):
+                    try:
+                        os.remove(os.path.join(cache_dir, fname))
+                    except OSError:
+                        pass
+        fm._load_fontmanager(try_read_cache=False)
+
+        # 注册字体
+        registered = []
+        for path, name in self._CJK_FONTS:
+            try:
+                if os.path.exists(path):
+                    fm.fontManager.addfont(path)
+                    registered.append(name)
+            except Exception:
+                pass
+
+        plt.rcParams['font.sans-serif'] = registered + ['DejaVu Sans']
+        plt.rcParams['font.family'] = 'sans-serif'
         plt.rcParams['axes.unicode_minus'] = False
-        try:
-            if os.path.exists(self._CJK_FONT_PATH):
-                fm.fontManager.addfont(self._CJK_FONT_PATH)
-                plt.rcParams['font.sans-serif'] = [self._CJK_FONT_NAME]
-                plt.rcParams['font.family'] = 'sans-serif'
-        except Exception:
-            pass
 
     @property
     def results(self) -> List[ComparisonResult]:

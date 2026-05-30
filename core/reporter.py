@@ -26,10 +26,16 @@ from .metrics import BacktestMetrics
 class Reporter:
     """回测报告生成器"""
 
-    # 尝试使用中文字体
-    # CJK 字体路径（DroidSansFallback 支持中文，matplotlib 可识别）
-    _CJK_FONT_PATH = '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf'
-    _CJK_FONT_NAME = 'Droid Sans Fallback'
+    # ------------------------------------------------------------------
+    # 中文字体配置（参考已正常显示的 EDA 项目配置方式）
+    # ------------------------------------------------------------------
+    _CJK_FONTS = [
+        # (文件路径, 字体名称) — 路径用于注册，名称用于 rcParams
+        ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'Droid Sans Fallback'),
+        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK SC'),
+    ]
+
+    _PATH_CACHE = '~/.cache/matplotlib'
 
     def __init__(self, output_dir: str):
         self.output_dir = output_dir
@@ -210,23 +216,41 @@ class Reporter:
         return os.path.join(self.output_dir, filename)
 
     def _setup_matplotlib(self):
-        """配置 Matplotlib 中文字体"""
-        plt.rcParams['axes.unicode_minus'] = False
-        try:
-            # 直接注册系统已有的 DroidSansFallback 字体（支持 CJK）
-            fm.fontManager.addfont(self._CJK_FONT_PATH)
-            plt.rcParams['font.sans-serif'] = [self._CJK_FONT_NAME]
-            plt.rcParams['font.family'] = 'sans-serif'
-            return
-        except Exception:
-            pass
-        # 兜底：尝试常用中文字体名称
-        for name in ['WenQuanYi Micro Hei', 'SimHei', 'Microsoft YaHei',
-                      'Noto Sans CJK SC', 'AR PL UMing CN']:
+        """
+        配置 Matplotlib 中文字体。
+
+        策略说明（参考 EDA 项目已验证的配置方式）：
+          1. 清除 matplotlib 字体缓存，确保新注册的字体生效
+          2. 通过 fontManager.addfont() 显式注册系统 CJK 字体文件
+          3. 用 font.sans-serif 字体回退链（fallback chain）设置多个候选字体
+          4. 将 font.family 设为 'sans-serif'，让 matplotlib 使用回退链
+        """
+        # 1. 清除字体缓存（防止旧缓存导致新注册字体不可见）
+        cache_dir = os.path.expanduser(self._PATH_CACHE)
+        if os.path.isdir(cache_dir):
+            for fname in os.listdir(cache_dir):
+                if fname.startswith('fontlist'):
+                    try:
+                        os.remove(os.path.join(cache_dir, fname))
+                    except OSError:
+                        pass
+        # 也清理 matplotlib 的 font_manager 内部缓存
+        fm._load_fontmanager(try_read_cache=False)
+
+        # 2. 注册所有 CJK 字体文件
+        registered_names = []
+        for font_path, font_name in self._CJK_FONTS:
             try:
-                fm.findfont(name, fallback_to_default=False)
-                plt.rcParams['font.family'] = name
-                return
+                if os.path.exists(font_path):
+                    fm.fontManager.addfont(font_path)
+                    registered_names.append(font_name)
             except Exception:
                 continue
-        plt.rcParams['font.family'] = 'DejaVu Sans'
+
+        # 3. 构建字体回退链（已注册的 CJK 字体在前，DejaVu Sans 兜底）
+        font_chain = registered_names + ['DejaVu Sans']
+
+        # 4. 应用字体设置（与 EDA 项目一致的配置方式）
+        plt.rcParams['font.sans-serif'] = font_chain
+        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['axes.unicode_minus'] = False

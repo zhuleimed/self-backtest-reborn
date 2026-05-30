@@ -112,15 +112,28 @@ class BacktestEngine:
         """
         执行完整回测流水线：
           数据加载 → 信号生成 → 风控 → 资金曲线 → 绩效指标 → 报告
+
+        输出目录层级：
+          output/YYYYMMDD/HHMM/xxx_trade_records.csv
+                ↕日期目录  ↕时间目录  ↕文件
         """
         cfg = self.config
         tag = cfg.tag or self.signal_name
-        ts = datetime.now().strftime('%Y%m%d_%H%M')
+
+        # 生成日期和时间字符串，创建分层输出目录
+        now = datetime.now()
+        date_str = now.strftime('%Y%m%d')
+        time_str = now.strftime('%H%M')
+        ts = f'{date_str}_{time_str}'
+        output_subdir = os.path.join(cfg.output_dir, date_str, time_str)
+        os.makedirs(output_subdir, exist_ok=True)
+        self.reporter.output_dir = output_subdir
 
         print(f'[回测引擎] 开始回测: {tag}')
         print(f'  股票池: {len(cfg.stock_codes)} 只')
         print(f'  时间:   {cfg.start_date} → {cfg.end_date or "最近"}')
         print(f'  策略:   {self.signal_name}')
+        print(f'  输出:   {output_subdir}')
         print('-' * 50)
 
         # ---- Step 1: 数据加载 ----
@@ -259,7 +272,9 @@ class BacktestEngine:
 
     def _generate_reports(self, tag: str = '', ts: str = ''):
         cfg = self.config
-        prefix = f'{tag}_{ts}' if tag else f'backtest_{ts}'
+        # 日期时间已由目录层级体现（output/YYYYMMDD/HHMM/），
+        # 文件名只需保留策略标记便于区分即可
+        prefix = tag or 'backtest'
 
         # 交易记录
         all_records = [r['trade_records'] for r in self._stock_results]
