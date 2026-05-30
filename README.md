@@ -150,7 +150,9 @@ ls output/    # CSV报告 + PNG图表都在这里
 │   ├── macd_cdtd.py                ←   MACD 顶底背离策略
 │   ├── arbr.py                     ←   ARBR 情绪指标策略
 │   ├── boll_dkbl.py                ←   布林带带宽收口策略
-│   └── boll_tdcs.py                ←   布林带参数调优策略
+│   ├── boll_tdcs.py                ←   布林带参数调优策略
+│   ├── gf.py                       ←   🆕 GF 综合指标（97个技术指标统一入口）
+│   └── gf_factors.py               ←   🆕 GF 指标计算库（143个函数）
 │
 ├── .claude/                        ← 🤖 Claude Code 配置（不需要你管）
 │
@@ -188,6 +190,8 @@ python run_backtest.py --list-plans
 #   kama_tight_stop      | KAMA | 7 只 | 2022-01-01
 #   boll_dkbl_demo       | BOLL_DKBL | 7 只 | 2022-01-01
 #   boll_tdcs_demo       | BOLL_TDCS | 7 只 | 2022-01-01
+#
+#   🆕 GF 系列没有预置方案，使用方式见下方 1.7
 ```
 
 每个方案包含：
@@ -252,6 +256,40 @@ python run_backtest.py \
     --commission 0.0003 \  # 佣金万分之三（默认万分之五）
     --tax 0.0005           # 印花税万分之五（默认千分之一）
 ```
+
+#### 1.7 🆕 使用 GF 综合指标（97个技术指标）
+
+框架集成了 **GF 指标公式库**（移植自 `002_self_backtest/GF_factors.py` + `GF_buy_sell_signal.py`），
+包含 **97 个技术指标**的统一入口。通过 `--indicator` 参数选择具体指标：
+
+```bash
+# 使用 KDJ 指标回测
+python run_backtest.py --signal GF --stocks 000012 --indicator KDJ
+
+# 使用 MACD 指标回测
+python run_backtest.py --signal GF --stocks 000012 --indicator MACD
+
+# 使用 RSI 指标 + 自定义周期
+python run_backtest.py --signal GF --stocks 000012 --indicator RSI --n 14
+```
+
+**常用 GF 指标速查表：**
+
+| 分类 | 指标名 | 说明 |
+|------|--------|------|
+| 价格动量 | KDJ | 随机指标 |
+| 价格动量 | MACD | 指数平滑异同平均 |
+| 价格动量 | RSI | 相对强弱指数 |
+| 价格动量 | CCI | 商品通道指数 |
+| 价格动量 | WR | 威廉指标 |
+| 价格动量 | BIAS | 乖离率 |
+| 成交量 | OBV | 能量潮 |
+| 成交量 | MFI | 资金流量指数 |
+| 价量 | VWAP | 成交量加权平均价 |
+| 价量 | VR | 成交量变异率 |
+
+> 💡 **小提示**：GF 策略也可以加入多策略对比：
+> `python run_compare.py --strategies KAMA,GF-KDJ --stocks 000012`
 
 #### 回测完成后你会看到什么？
 

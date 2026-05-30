@@ -87,6 +87,12 @@ def main():
     print('=' * 60)
 
     for name in names:
+        # 支持 GF-KDJ 语法：GF 策略后跟短横线 + 指标名
+        if '-' in name:
+            base, indicator = name.split('-', 1)
+            if base.upper() == 'GF':
+                strategies.append((name, create_signal('GF', {'indicator': indicator.upper()})))
+                continue
         if name not in SIGNAL_FACTORY:
             print(f'  ⚠ 跳过未知策略: {name}')
             continue
