@@ -338,25 +338,28 @@ python run_compare.py --list
 #### 2.2 对比策略示例
 
 ```bash
-# 在所有demo股票上，对比全部5个策略
+# 默认对比 4 个常用指标（KDJ, RSI, MACD, CCI）
 python run_compare.py
 
-# 它会依次运行5次回测，然后生成对比报告
+# 它会依次运行4次回测，然后生成对比报告
 ```
 
-#### 2.3 对比指定的几个策略
+#### 2.3 对比指定指标
 
 ```bash
-# 只对比 KAMA 和 BOLL_DKBL
-python run_compare.py --strategies KAMA,BOLL_DKBL
+# 对比 KDJ 和 MACD
+python run_compare.py --strategies KDJ,MACD
+
+# 对比 3 个常用反转指标
+python run_compare.py --strategies KDJ,RSI,CCI
 ```
 
 #### 2.4 自定义对比参数
 
 ```bash
 python run_compare.py \
-    --strategies KAMA,BOLL_DKBL,BOLL_TDCS \  # 对比这3个
-    --stocks 000012,000014 \                  # 在这2只股票上
+    --strategies KDJ,RSI,MACD \       # 对比这3个指标
+    --stocks 000012,000014 \           # 在这2只股票上
     --start 2023-01-01                        # 从2023年开始
 ```
 
@@ -523,12 +526,8 @@ from signals.my_strategy import MyStrategy
 
 # 在 SIGNAL_FACTORY 字典里加上这行
 SIGNAL_FACTORY = {
-    'KAMA': KAMASignal,
-    'MACD_CDTD': MACDCDTDSignal,
-    'ARBR': ARBRSignal,
-    'BOLL_DKBL': BOLLDKBLSignal,
-    'BOLL_TDCS': BOLLTDCSignal,
-    'MY_STRATEGY': MyStrategy,  # ← 加上这个
+    'GF': GFSignal,             # GF 综合指标（97个）
+    'MY_STRATEGY': MyStrategy,  # ← 加上你的策略
 }
 ```
 
@@ -548,8 +547,8 @@ python run_backtest.py \
 #### 第四步：加入对比
 
 ```bash
-# 你的策略和已有的策略一起对比
-python run_compare.py --strategies KAMA,MY_STRATEGY
+# 你的策略和已有的指标一起对比
+python run_compare.py --strategies KDJ,RSI,MY_STRATEGY
 ```
 
 **总共只需要写一个类（约30行）+ 一行注册 + 一行命令，就完成了！**
