@@ -77,7 +77,8 @@ class ParameterOptimizer:
                     base_config: BacktestConfig,
                     objective: str = 'sharpe_ratio',
                     top_k: int = 5,
-                    maximize: bool = True) -> List[ParamGridResult]:
+                    maximize: bool = True,
+                    fixed_params: Optional[Dict] = None) -> List[ParamGridResult]:
         """
         网格搜索最佳参数组合。
 
@@ -123,8 +124,12 @@ class ParameterOptimizer:
             params = dict(zip(param_names, combo))
             print(f'  [{idx}/{total}] {params}…', end=' ', flush=True)
 
-            # 创建策略实例
-            signal = signal_class(**params)
+            # 创建策略实例：合并固定参数（如 indicator）和搜索参数
+            signal_kwargs = {}
+            if fixed_params:
+                signal_kwargs.update(fixed_params)
+            signal_kwargs.update(params)
+            signal = signal_class(**signal_kwargs)
 
             # 运行回测
             config = BacktestConfig(

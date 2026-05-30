@@ -67,6 +67,8 @@ def main():
                         help='股票代码')
     parser.add_argument('--start', type=str, default='',
                         help='开始日期')
+    parser.add_argument('--end', type=str, default='',
+                        help='结束日期')
     parser.add_argument('--top-k', type=int, default=5,
                         help='输出最佳组合数，默认5')
     parser.add_argument('--list-grids', action='store_true',
@@ -106,6 +108,8 @@ def main():
         cfg['stock_codes'] = [s.strip() for s in args.stocks.split(',')]
     if args.start:
         cfg['start_date'] = args.start
+    if args.end:
+        cfg['end_date'] = args.end
 
     config = BacktestConfig(
         stock_codes=cfg['stock_codes'],
@@ -133,6 +137,7 @@ def main():
         base_config=config,
         objective=args.objective,
         top_k=args.top_k,
+        fixed_params={'indicator': indicator},
     )
 
 

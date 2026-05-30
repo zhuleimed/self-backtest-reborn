@@ -222,9 +222,12 @@ class EquityCurveCalculator:
             buy_order = open_buys[0]
             batch = min(buy_order['数量'], remaining)
             batch_cost = buy_order['总成本'] * (batch / buy_order['数量'])
+            # 佣金和印花税按卖出数量比例分摊，避免重复扣减
+            batch_commission = commission * (batch / sell_num)
+            batch_tax = tax * (batch / sell_num)
             profit = (sell_price - buy_order['价格']) * batch \
                      - buy_order['手续费'] * (batch / buy_order['数量']) \
-                     - commission - tax
+                     - batch_commission - batch_tax
             days_held = (df.at[i, 'date'] - buy_order['日期']).days
             return_rate = profit / batch_cost if batch_cost != 0 else 0.0
 
@@ -233,10 +236,10 @@ class EquityCurveCalculator:
                 trade_type=trade_type,
                 price=sell_price,
                 volume=batch,
-                commission=commission,
-                tax=tax,
+                commission=batch_commission,
+                tax=batch_tax,
                 total_cost=batch_cost,
-                total_revenue=total_revenue,
+                total_revenue=total_revenue * (batch / sell_num),
                 profit=profit,
                 days_held=days_held,
                 return_rate=return_rate,
