@@ -37,8 +37,7 @@ class StrategyComparator:
 
     # 中文字体配置（与 reporter.py 保持一致）
     _CJK_FONTS = [
-        ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'Droid Sans Fallback'),
-        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK SC'),
+        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK JP'),
     ]
     _PATH_CACHE = '~/.cache/matplotlib'
 
@@ -183,7 +182,6 @@ class StrategyComparator:
 
     def _setup_matplotlib(self):
         """配置 Matplotlib 中文字体（与 reporter.py 一致的方案）"""
-        # 清除字体缓存
         cache_dir = os.path.expanduser(self._PATH_CACHE)
         if os.path.isdir(cache_dir):
             for fname in os.listdir(cache_dir):
@@ -194,18 +192,14 @@ class StrategyComparator:
                         pass
         fm._load_fontmanager(try_read_cache=False)
 
-        # 注册字体
-        registered = []
         for path, name in self._CJK_FONTS:
             try:
                 if os.path.exists(path):
                     fm.fontManager.addfont(path)
-                    registered.append(name)
             except Exception:
                 pass
 
-        plt.rcParams['font.sans-serif'] = registered + ['DejaVu Sans']
-        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.family'] = 'Noto Sans CJK JP'
         plt.rcParams['axes.unicode_minus'] = False
 
     @property

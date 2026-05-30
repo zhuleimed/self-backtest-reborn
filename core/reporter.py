@@ -27,14 +27,13 @@ class Reporter:
     """回测报告生成器"""
 
     # ------------------------------------------------------------------
-    # 中文字体配置（参考已正常显示的 EDA 项目配置方式）
+    # 中文字体配置
     # ------------------------------------------------------------------
     _CJK_FONTS = [
-        # (文件路径, 字体名称) — 路径用于注册，名称用于 rcParams
-        ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'Droid Sans Fallback'),
-        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK SC'),
+        # 注意：DroidSansFallback 是纯 CJK 字体，不含 ASCII 字符（字母数字会变方块）
+        # 必须使用 Noto Sans CJK 系列（同时包含 ASCII + 中日韩字符）
+        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK JP'),
     ]
-
     _PATH_CACHE = '~/.cache/matplotlib'
 
     def __init__(self, output_dir: str):
@@ -219,13 +218,12 @@ class Reporter:
         """
         配置 Matplotlib 中文字体。
 
-        策略说明（参考 EDA 项目已验证的配置方式）：
-          1. 清除 matplotlib 字体缓存，确保新注册的字体生效
-          2. 通过 fontManager.addfont() 显式注册系统 CJK 字体文件
-          3. 用 font.sans-serif 字体回退链（fallback chain）设置多个候选字体
-          4. 将 font.family 设为 'sans-serif'，让 matplotlib 使用回退链
+        关键注意事项：
+          - DroidSansFallback 是纯 CJK 字体，**不含 ASCII 字符**（字母数字会变方块）
+          - 必须使用 Noto Sans CJK 系列，它同时包含 ASCII + 中日韩字符
+          - 字体注册后只需设置 font.family 即可（不用 font.sans-serif 列表）
         """
-        # 1. 清除字体缓存（防止旧缓存导致新注册字体不可见）
+        # 1. 清除字体缓存
         cache_dir = os.path.expanduser(self._PATH_CACHE)
         if os.path.isdir(cache_dir):
             for fname in os.listdir(cache_dir):
@@ -234,23 +232,19 @@ class Reporter:
                         os.remove(os.path.join(cache_dir, fname))
                     except OSError:
                         pass
-        # 也清理 matplotlib 的 font_manager 内部缓存
         fm._load_fontmanager(try_read_cache=False)
 
-        # 2. 注册所有 CJK 字体文件
-        registered_names = []
+        # 2. 注册字体
         for font_path, font_name in self._CJK_FONTS:
             try:
                 if os.path.exists(font_path):
                     fm.fontManager.addfont(font_path)
-                    registered_names.append(font_name)
             except Exception:
                 continue
 
-        # 3. 构建字体回退链（已注册的 CJK 字体在前，DejaVu Sans 兜底）
-        font_chain = registered_names + ['DejaVu Sans']
-
-        # 4. 应用字体设置（与 EDA 项目一致的配置方式）
-        plt.rcParams['font.sans-serif'] = font_chain
-        plt.rcParams['font.family'] = 'sans-serif'
+        # 3. 直接使用字体名称（font.family）— 更可靠的方式
+        #    不通过 font.sans-serif 列表做回退链，因为：
+        #    a) DroidSansFallback 无 ASCII 字符，回退机制不可靠
+        #    b) Noto Sans CJK JP 同时涵盖 ASCII + CJK，不需要回退
+        plt.rcParams['font.family'] = 'Noto Sans CJK JP'
         plt.rcParams['axes.unicode_minus'] = False

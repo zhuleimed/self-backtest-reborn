@@ -35,8 +35,7 @@ class ParameterOptimizer:
 
     # 中文字体配置（与 reporter.py 保持一致）
     _CJK_FONTS = [
-        ('/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf', 'Droid Sans Fallback'),
-        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK SC'),
+        ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 'Noto Sans CJK JP'),
     ]
     _PATH_CACHE = '~/.cache/matplotlib'
 
@@ -268,15 +267,12 @@ class ParameterOptimizer:
                         pass
         fm._load_fontmanager(try_read_cache=False)
 
-        registered = []
         for path, name in self._CJK_FONTS:
             try:
                 if os.path.exists(path):
                     fm.fontManager.addfont(path)
-                    registered.append(name)
             except Exception:
                 pass
 
-        plt.rcParams['font.sans-serif'] = registered + ['DejaVu Sans']
-        plt.rcParams['font.family'] = 'sans-serif'
+        plt.rcParams['font.family'] = 'Noto Sans CJK JP'
         plt.rcParams['axes.unicode_minus'] = False
