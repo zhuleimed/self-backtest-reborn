@@ -28,6 +28,7 @@ from signals.macd_cdtd import MACDCDTDSignal
 from signals.arbr import ARBRSignal
 from signals.boll_dkbl import BOLLDKBLSignal
 from signals.boll_tdcs import BOLLTDCSignal
+from signals.gf import GFSignal
 from config.backtest_config import BACKTEST_PLANS, DEFAULT_CONFIG
 
 
@@ -41,6 +42,7 @@ SIGNAL_FACTORY = {
     'ARBR': ARBRSignal,
     'BOLL_DKBL': BOLLDKBLSignal,
     'BOLL_TDCS': BOLLTDCSignal,
+    'GF': GFSignal,
 }
 
 
@@ -89,6 +91,9 @@ def parse_args():
     parser.add_argument('--n', type=int, default=None)
     parser.add_argument('--fast', type=int, default=None)
     parser.add_argument('--slow', type=int, default=None)
+    # GF 综合指标参数（选择具体指标）
+    parser.add_argument('--indicator', type=str, default='',
+                        help='GF信号的具体指标名，如 KDJ, MACD, RSI, CCI 等')
 
     # 资金参数
     parser.add_argument('--money', type=float, default=None,
@@ -172,6 +177,9 @@ def main():
         signal_params['fast'] = args.fast
     if args.slow is not None:
         signal_params['slow'] = args.slow
+    # GF 指标参数
+    if args.indicator:
+        signal_params['indicator'] = args.indicator.upper()
 
     # 创建策略
     strategy = create_signal(cfg_dict['signal_name'], signal_params)
