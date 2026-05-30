@@ -155,11 +155,16 @@ ls output/    # CSV报告 + PNG图表都在这里
 ├── .claude/                        ← 🤖 Claude Code 配置（不需要你管）
 │
 └── output/                         ← 📊 回测输出目录（自动生成）
-    ├── *_trade_records.csv         ←   交易明细
-    ├── *_account_curve.csv         ←   资金曲线
-    ├── *_metrics.csv               ←   绩效指标
-    ├── *_returns.png               ←   收益曲线图
-    └── comparison_*.csv/png        ←   对比结果
+    ├── 20250530/                   ← 日期目录（运行回测的日期）
+    │   └── 1719/                   ← 时间目录（24小时制，精确到分钟）
+    │       ├── KAMA_trade_records.csv  ← 交易明细
+    │       ├── KAMA_account_curve.csv  ← 资金曲线
+    │       ├── KAMA_metrics.csv        ← 绩效指标
+    │       └── KAMA_returns.png        ← 收益曲线图
+    ├── 20250531/                   ← 明天再跑就自动新建目录
+    │   └── 0902/
+    │       └── ...
+    └── ...
 ```
 
 ---
@@ -251,10 +256,11 @@ python run_backtest.py \
 #### 回测完成后你会看到什么？
 
 ```
-[回测引擎] 开始回测: KAMA_2022-01-01
+[回测引擎] 开始回测: KAMA_2025-05-30
   股票池: 2 只
   时间:   2024-06-01 → 2024-12-31
   策略:   KAMA
+  输出:   output/20250530/1719/
 --------------------------------------------------
 [1/5] 加载数据…
   ✓ 加载 2 只股票, 1 个基准指数
@@ -263,10 +269,10 @@ python run_backtest.py \
 [3/5] 施加风控规则…
 [4/5] 计算资金曲线…
 [5/5] 计算绩效 & 生成报告…
-  📄 交易记录 → output/xxx_trade_records.csv
-  📄 资金曲线 → output/xxx_account_curve.csv
-  📄 绩效指标 → output/xxx_metrics.csv
-  📊 收益曲线图 → output/xxx_returns.png
+  📄 交易记录 → output/20250530/1719/KAMA_trade_records.csv
+  📄 资金曲线 → output/20250530/1719/KAMA_account_curve.csv
+  📄 绩效指标 → output/20250530/1719/KAMA_metrics.csv
+  📊 收益曲线图 → output/20250530/1719/KAMA_returns.png
 
 ==================================================
   回测绩效摘要
@@ -691,11 +697,29 @@ python run_backtest.py --stocks 000012 --start 2024-01-01 --end 2024-06-30
 
 ### Q7: 输出文件在哪里？
 
-全部在 `output/` 目录下：
-- `*_trade_records.csv` — 每笔交易的买入卖出明细
-- `*_account_curve.csv` — 每天的总资产、现金、股票市值
-- `*_metrics.csv` — 各项绩效指标汇总
-- `*_returns.png` — 收益率曲线图
+输出目录按**日期/时间**自动分层组织，不同时间运行的结果互不干扰：
+
+```
+output/
+├── 20250530/               ← 运行回测的日期（YYYYMMDD）
+│   └── 1719/               ← 运行回测的时间（HHMM，24小时制）
+│       ├── KAMA_trade_records.csv   ← 交易明细
+│       ├── KAMA_account_curve.csv   ← 每天的总资产、现金、股票市值
+│       ├── KAMA_metrics.csv         ← 各项绩效指标汇总
+│       └── KAMA_returns.png         ← 收益率曲线图
+├── 20250531/               ← 明天再跑就自动新建目录
+│   └── 0902/
+│       ├── KAMA_trade_records.csv
+│       └── ...
+└── ...
+```
+
+**文件名说明**：
+- `KAMA_*.csv` — 前缀 = 策略名称（`--tag` 参数可自定义）
+- `trade_records` — 每笔交易的买入卖出明细
+- `account_curve` — 账户每日资金曲线（含基准对比）
+- `metrics` — 各项绩效指标汇总
+- `returns.png` — 收益率曲线对比图
 
 ---
 
