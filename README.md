@@ -328,16 +328,14 @@ python run_backtest.py --stocks 000012 --indicator MACD --n1 10 --n2 24 --n3 7
 ```bash
 python run_compare.py --list
 
-# 输出：
-#   可用的信号策略:
-#     KAMA
-#     MACD_CDTD
-#     ARBR
-#     BOLL_DKBL
-#     BOLL_TDCS
+# 输出（共 97 个）：
+#   1. DPO
+#   2. ER
+#   3. TII
+#   ...
 ```
 
-#### 2.2 对比所有策略
+#### 2.2 对比策略示例
 
 ```bash
 # 在所有demo股票上，对比全部5个策略
@@ -558,63 +556,88 @@ python run_compare.py --strategies KAMA,MY_STRATEGY
 
 ---
 
-## 📋 所有命令速查表
+## 📋 所有命令与参数速查表
 
-### 回测命令
+### 回测命令（`run_backtest.py`）
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `--list-plans` | 查看预置方案 | `python run_backtest.py --list-plans` |
-| `--plan <名称>` | 使用预置方案 | `python run_backtest.py --plan kama_demo` |
-| `--stocks <代码>` | 指定股票 | `--stocks 000012,000014` |
-| `--start <日期>` | 开始日期 | `--start 2022-01-01` |
-| `--end <日期>` | 结束日期 | `--end 2024-12-31`（不填=最新） |
-| `--signal <策略>` | 策略名称 | `--signal KAMA` |
-| `--tag <标记>` | 文件命名标记 | `--tag my_test` |
-| `--money <金额>` | 每只股票初始资金 | `--money 50000`（默认10000） |
-| `--slippage <值>` | 滑点 | `--slippage 0.001`（默认0.003） |
-| `--commission <值>` | 佣金比例 | `--commission 0.0003`（默认万分之五） |
-| `--tax <值>` | 印花税比例 | `--tax 0.0005`（默认千分之一） |
-| `--stop-loss <值>` | 止损比例 | `--stop-loss 0.03`（默认5%） |
-| `--stop-profit <值>` | 止盈比例 | `--stop-profit 0.15`（默认20%） |
-| `--drawdown <值>` | 回落止盈比例 | `--drawdown 0.02`（默认3%） |
+| 参数 | 类型 | 必填 | 说明 | 默认值 |
+|------|------|------|------|--------|
+| `--stocks` | 字符串 | ✅ | 股票代码，多只逗号分隔，如 `000012,000014` | — |
+| `--start` | 日期 | ❌ | 回测开始日期 `YYYY-MM-DD` | `2022-01-01` |
+| `--end` | 日期 | ❌ | 回测结束日期 `YYYY-MM-DD`，留空=到最新 | 最新 |
+| `--indicator` | 字符串 | ❌ | 技术指标名称（大写），如 KDJ, MACD, RSI | `KDJ` |
+| `--tag` | 字符串 | ❌ | 输出文件命名标记 | 自动 |
+| `--list-indicators` | 标志 | ❌ | 列出全部 97 个可用指标 | — |
+| `--n` | 整数 | ❌ | 指标参数 N（主周期），含义取决于指标 | 指标默认 |
+| `--n1` | 整数 | ❌ | 指标参数 N1 | 指标默认 |
+| `--n2` | 整数 | ❌ | 指标参数 N2 | 指标默认 |
+| `--n3` | 整数 | ❌ | 指标参数 N3 | 指标默认 |
+| `--m` | 整数 | ❌ | 指标参数 M（辅助周期） | 指标默认 |
+| `--money` | 浮点数 | ❌ | **每只股票初始资金（元）** | `10000` |
+| `--slippage` | 浮点数 | ❌ | **滑点**（买入上浮、卖出入下的比例） | `0.003` (0.3%) |
+| `--commission` | 浮点数 | ❌ | **佣金比例** | `0.0005` (万分之五) |
+| `--tax` | 浮点数 | ❌ | **印花税比例**（卖出时收取） | `0.001` (千分之一) |
+| `--position` | 浮点数 | ❌ | **每笔交易仓位比例** | `0.95` (95%) |
+| `--stop-loss` | 浮点数 | ❌ | **止损比例**：开盘价 < 买入价×(1-比例) 时卖出 | `0.05` (5%) |
+| `--stop-profit` | 浮点数 | ❌ | **止盈触发比例**：最高价 >= 买入价×(1+比例) 时激活 | `0.20` (20%) |
+| `--drawdown` | 浮点数 | ❌ | **回落止盈比例**：止盈激活后，开盘价 < 最高价×(1-比例) 时卖出 | `0.03` (3%) |
 
-### 策略参数（通用）
+> **提示**：`--stop-loss`、`--stop-profit`、`--drawdown`、`--slippage` 等带横线的参数，
+> 在命令行中按 `--参数名 值` 格式输入（**不要用等号**）。
 
-框架使用 GF 综合策略（唯一策略），通过 `--indicator` 选择具体指标。
-通用参数覆盖（不同指标含义不同）：
+### 实际命令示例对照
 
-| 参数 | 说明 | 适用指标示例 |
-|------|------|-------------|
-| `--n` | 主周期参数 | KDJ(N), RSI(N), CCI(N), WR(N) |
-| `--n1` | 参数1 | MACD(N1=快线), OBV(N1) |
-| `--n2` | 参数2 | MACD(N2=慢线), OBV(N2) |
-| `--n3` | 参数3 | MACD(N3=信号线) |
-| `--m` | 辅助周期 | KDJ(M), SKDJ(M) |
+```bash
+# ❌ 错误写法（参数名不对）
+python run_backtest.py --stocks 300730 --start_date 2026-01-01 --end_date 2026-05-20 --indicator AWS
 
-每个指标的默认参数见 `config/backtest_config.py` 或 `signals/gf.py` 中的 `_DEFAULT_PARAMS`。
+# ✅ 正确写法
+python run_backtest.py --stocks 300730 --start 2026-01-01 --end 2026-05-20 --indicator AWS
 
-### 对比命令
+# 完整参数示例
+python run_backtest.py \
+    --stocks 300730 \              # 股票代码
+    --start 2026-01-01 \           # 开始日期
+    --end 2026-05-20 \             # 结束日期
+    --indicator KDJ \              # 指标名称
+    --money 50000 \                # 初始资金5万
+    --stop-loss 0.03 \             # 3%止损
+    --stop-profit 0.15 \           # 15%止盈
+    --drawdown 0.02 \              # 2%回落止盈
+    --slippage 0.001 \             # 0.1%滑点
+    --commission 0.0003            # 万分之三佣金
+```
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `--list` | 列出可对比策略 | `python run_compare.py --list` |
-| `--strategies` | 选择策略对比 | `--strategies KAMA,BOLL_DKBL` |
-| `--stocks` | 指定股票 | `--stocks 000012,000014` |
-| `--start` | 开始日期 | `--start 2023-01-01` |
-| `--end` | 结束日期 | `--end 2024-12-31` |
+### 对比命令（`run_compare.py`）
 
-### 优化命令
+| 参数 | 类型 | 必填 | 说明 | 默认值 |
+|------|------|------|------|--------|
+| `--strategies` | 字符串 | ❌ | 指标名称逗号分隔，如 `KDJ,MACD,RSI` | KDJ,RSI,MACD,CCI |
+| `--stocks` | 字符串 | ❌ | 股票代码，逗号分隔 | 配置文件默认 |
+| `--start` | 日期 | ❌ | 开始日期 | 配置文件默认 |
+| `--end` | 日期 | ❌ | 结束日期 | 最新 |
+| `--list` | 标志 | ❌ | 列出全部可用指标 | — |
+| `--money` | 浮点数 | ❌ | 每只股票初始资金 | 10000 |
+| `--stop-loss` | 浮点数 | ❌ | 止损比例 | 0.05 |
 
-| 命令 | 说明 | 示例 |
-|------|------|------|
-| `--list-grids` | 查看预置参数网格 | `python run_optimize.py --list-grids` |
-| `--strategy` | 选择优化策略 | `--strategy KAMA` |
-| `--objective` | 优化目标 | `--objective sharpe_ratio` |
-| `--param-ranges` | 自定义参数范围 | `--param-ranges '{"n":[5,10,15]}'` |
-| `--top-k` | 输出最佳组合数 | `--top-k 10`（默认5） |
-| `--stocks` | 指定股票 | `--stocks 000012` |
-| `--start` | 开始日期 | `--start 2022-01-01` |
+### 优化命令（`run_optimize.py`）
+
+| 参数 | 类型 | 必填 | 说明 | 默认值 |
+|------|------|------|------|--------|
+| `--indicator` | 字符串 | ❌ | 要优化的指标名称 | `KDJ` |
+| `--objective` | 字符串 | ❌ | 优化目标 | `sharpe_ratio` |
+| | | | 可选：`total_return` 总收益率 | |
+| | | | `annualized_return` 年化收益率 | |
+| | | | `sharpe_ratio` 夏普比率 | |
+| | | | `sortino_ratio` Sortino比率 | |
+| | | | `calmar_ratio` 卡玛比率 | |
+| | | | `win_rate` 胜率 | |
+| | | | `profit_factor` 盈亏比 | |
+| `--param-ranges` | JSON | ❌ | 自定义参数范围，如 `'{"N":[30,40,50]}'` | 预置网格 |
+| `--top-k` | 整数 | ❌ | 输出最佳组合数 | `5` |
+| `--stocks` | 字符串 | ❌ | 股票代码 | 配置文件默认 |
+| `--start` | 日期 | ❌ | 开始日期 | 配置文件默认 |
+| `--list-grids` | 标志 | ❌ | 列出所有预置参数网格 | — |
 
 ---
 
