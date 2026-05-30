@@ -9,14 +9,13 @@
     - 并行处理：多股票回测时使用线程池加速
     - 进度显示：tqdm 进度条
     - 日志系统：logging 替代 print
-    - 大盘环境过滤：参考指数数据判断是否适合开仓
 """
 
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import pandas as pd
 

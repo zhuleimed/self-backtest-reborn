@@ -9,8 +9,8 @@
 
 用法:
   engine = SignalEngine()
-  engine.register(KAMASignal(n=10))         # 注册单个策略
-  engine.register(MACDSignal(), weight=0.6) # 可带权重
+  engine.register(strategy)                  # 注册单个策略
+  engine.register(strategy2, weight=0.6)     # 可带权重
   data = engine.generate(data)              # 统一调用
 """
 
