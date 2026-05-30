@@ -1,6 +1,6 @@
 # 📈 模块化量化回测框架
 
-> **002_self_backtest_reborn** — 基于 Claude Code 最佳实践架构设计，支持可插拔策略、多策略对比、参数网格优化
+> **002_self_backtest_reborn** — 基于 GF 指标公式库（97 个技术指标）的 A 股回测系统
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue)](https://python.org)
 [![GitHub](https://img.shields.io/badge/GitHub-self--backtest--reborn-green)](https://github.com/zhuleimed/self-backtest-reborn)
@@ -9,51 +9,15 @@
 
 ## 📑 目录
 
-- [为什么要有这个框架？](#-为什么要有这个框架)
 - [一分钟快速上手](#-一分钟快速上手)
-- [项目架构（三层设计）](#-项目架构三层设计)
-- [项目文件结构](#-项目文件结构)
-- [详细用法指南](#-详细用法指南)
-  - [1. 运行回测](#1-运行回测)
-  - [2. 多策略对比](#2-多策略对比)
-  - [3. 参数优化](#3-参数优化)
-  - [4. 添加新策略](#4-添加新策略)
-- [所有命令速查表](#-所有命令速查表)
-- [各模块详解](#-各模块详解)
+- [项目结构](#-项目结构)
+- [回测命令详解](#-回测命令详解run_backtestpy)
+- [多指标对比](#-多指标对比run_comparepy)
+- [参数优化](#-参数优化run_optimizepy)
+- [可用指标一览](#-可用指标一览)
+- [输出结果解读](#-输出结果解读)
+- [自定义参数说明](#-自定义参数说明)
 - [常见问题](#-常见问题)
-
----
-
-## 💡 为什么要有这个框架？
-
-### 原来写回测是什么样？
-
-```python
-# 传统的回测代码（单体文件，1000+行）
-def main():
-    # 数据加载、信号计算、风控、资金曲线、绘图
-    # 全部写在一个函数里……
-    # 改一个参数要找半天
-    # 加一个新策略要复制整个文件
-```
-
-**问题**：代码耦合严重、难以扩展、每次修改都心惊胆战。
-
-### 这个框架做了什么？
-
-把回测拆解成 **6 个独立模块**，像搭积木一样组装：
-
-```
-数据加载 → 信号生成 → 风控 → 资金曲线 → 指标计算 → 报告输出
-   │          │         │        │         │         │
- 独立模块    独立模块   独立模块  独立模块   独立模块   独立模块
-```
-
-**好处**：
-- ✅ 加新策略 = 写一个类，一行代码注册
-- ✅ 改参数 = 改配置文件，不动代码
-- ✅ 对比策略 = 一行命令
-- ✅ 找最佳参数 = 一行命令
 
 ---
 
@@ -63,709 +27,395 @@ def main():
 # 1. 进到项目目录
 cd /public/home/hpc/zhulei/superman/quant/code/002_self_backtest_reborn
 
-# 2. 查看所有可用的技术指标（97个）
+# 2. 查看所有可用的技术指标（共 97 个）
 python run_backtest.py --list-indicators
 
-# 3. 运行一个回测（KDJ指标 + 单只股票）
+# 3. 运行回测（KDJ 指标，单只股票）
 python run_backtest.py --stocks 000012 --indicator KDJ
 
 # 4. 看结果
-ls output/    # CSV报告 + PNG图表都在这里
+ls output/20260530/1850/
 ```
 
 ---
 
-## 🏗 项目架构（三层设计）
-
-这个框架按照 **Claude Code 最佳实践** 的分层思想设计：
+## 🏗 项目结构
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  🎯 命令层 (Command)                                              │
-│  ┌──────────────────────────────────────────────────────────────┐ │
-│  │  run_backtest.py    ← 你直接运行这个脚本                        │ │
-│  │  run_compare.py     ← 多策略对比                               │ │
-│  │  run_optimize.py    ← 参数优化                                 │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│  你只需要在终端敲命令，其他交给下面两层                              │
-├──────────────────────────────────────────────────────────────────┤
-│  ⚙️ 核心引擎层 (Core)                                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌────────┐ │
-│  │ 数据加载  │→│ 信号生成  │→│  风控    │→│ 资金曲线  │→│ 报告   │ │
-│  │DataLoader│ │SigEngine │ │RiskMgr  │ │EquityCrv│ │Reporter│ │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └────────┘ │
-│  每个模块做一件事，互不干扰                                        │
-├──────────────────────────────────────────────────────────────────┤
-│  📦 策略层 (Signals)                                              │
-│  ┌──────────┬────────────┬────────┬───────────┬────────────┐    │
-│  │  KAMA   │ MACD_CDTD  │  ARBR  │BOLL_DKBL  │ BOLL_TDCS  │    │
-│  └──────────┴────────────┴────────┴───────────┴────────────┘    │
-│  每个策略就是一个类，你可以随便加                                   │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### 核心思想：一个模块只做一件事
-
-| 模块 | 它只负责 | 不负责 |
-|------|---------|-------|
-| `DataLoader` | 读CSV、清洗数据 | 算指标、画图 |
-| `SignalEngine` | 生成买卖信号 | 计算收益、控风险 |
-| `RiskManager` | 止盈止损、涨跌停 | 算收益率 |
-| `EquityCurveCalculator` | 算资金曲线 | 选股票 |
-| `MetricsCalculator` | 算绩效指标 | 画图 |
-| `Reporter` | 保存CSV、画图 | 做交易决策 |
-
-这样设计的好处：**你想改任何一部分，都不影响其他部分。**
-
----
-
-## 📁 项目文件结构
-
-```
-002_self_backtest_reborn/           ← 项目根目录
+002_self_backtest_reborn/
 │
-├── run_backtest.py                 ← 🚀 主入口：运行回测
-├── run_compare.py                  ← 🚀 多策略对比入口
-├── run_optimize.py                 ← 🚀 参数优化入口
-├── CLAUDE.md                       ← 项目说明（给Claude看的）
-├── README.md                       ← 本指南（给你看的）
-├── .gitignore                      ← Git忽略规则
+├── run_backtest.py           ← 🚀 回测入口（主要使用）
+├── run_compare.py            ← 🚀 多指标对比入口
+├── run_optimize.py           ← 🚀 参数优化入口
+├── config/
+│   └── backtest_config.py    ← 默认配置（含97个指标列表注释）
 │
-├── config/                         ← 📋 配置中心
-│   └── backtest_config.py          ←   预置方案、股票池、参数都在这里
+├── core/                     ← ⚙️ 回测引擎模块
+│   ├── engine.py             ← 回测总编排器（5步流水线）
+│   ├── data_loader.py        ← 数据加载与清洗
+│   ├── signal_engine.py      ← 信号合成引擎
+│   ├── risk_manager.py       ← 风控（止盈止损、涨跌停）
+│   ├── equity_curve.py       ← 资金曲线计算
+│   ├── metrics.py            ← 绩效指标计算
+│   ├── reporter.py           ← 结果输出与图表
+│   ├── comparator.py         ← 多指标对比
+│   └── optimizer.py          ← 参数网格优化
 │
-├── core/                           ← ⚙️ 核心引擎（7个模块）
-│   ├── engine.py                   ←   回测引擎总编排器
-│   ├── data_loader.py              ←   数据加载
-│   ├── signal_engine.py            ←   信号生成引擎 + 策略基类
-│   ├── risk_manager.py             ←   风控（止盈止损、涨跌停）
-│   ├── equity_curve.py             ←   资金曲线计算
-│   ├── metrics.py                  ←   绩效指标
-│   ├── reporter.py                 ←   报告输出
-│   ├── comparator.py               ←   多策略对比
-│   └── optimizer.py                ←   参数优化
+├── signals/                  ← 📦 GF 综合指标策略
+│   ├── gf.py                 ← 统一策略入口（97个指标）
+│   └── gf_factors.py         ← 指标计算函数库（143个函数）
 │
-├── signals/                        ← 📦 GF 综合指标策略库
-│   ├── gf.py                       ←   GF 综合策略类（唯一策略入口，97个指标）
-│   └── gf_factors.py               ←   GF 指标计算库（143个计算函数）
+├── output/                   ← 📊 回测结果（自动生成）
+│   ├── 20250530/             ← 日期目录
+│   │   ├── 1719/             ← 时间目录
+│   │   │   ├── KDJ_trade_records.csv
+│   │   │   ├── KDJ_account_curve.csv
+│   │   │   ├── KDJ_metrics.csv
+│   │   │   └── KDJ_returns.png
+│   │   └── 1820/             ← 下一次运行
+│   └── ...
 │
-├── .claude/                        ← 🤖 Claude Code 配置（不需要你管）
-│
-└── output/                         ← 📊 回测输出目录（自动生成）
-    ├── 20250530/                   ← 日期目录（运行回测的日期）
-    │   └── 1719/                   ← 时间目录（24小时制，精确到分钟）
-    │       ├── KAMA_trade_records.csv  ← 交易明细
-    │       ├── KAMA_account_curve.csv  ← 资金曲线
-    │       ├── KAMA_metrics.csv        ← 绩效指标
-    │       └── KAMA_returns.png        ← 收益曲线图
-    ├── 20250531/                   ← 明天再跑就自动新建目录
-    │   └── 0902/
-    │       └── ...
-    └── ...
+├── .claude/                  ← Claude Code 配置（勿动）
+├── CLAUDE.md                 ← 项目说明
+└── README.md                 ← 本指南
 ```
 
 ---
 
-## 📖 详细用法指南
+## 📖 回测命令详解（`run_backtest.py`）
 
----
-
-### 1. 运行回测
-
-#### 1.1 查看所有可用的技术指标
+### 运行示例
 
 ```bash
-python run_backtest.py --list-indicators
-
-# 输出共 97 个指标，按分类显示：
-#   【价格动量指标（表34）】
-#     DPO  ER  TII  PO  MA_DISPLACED ...
-#   【价格反转指标（表35）】
-#     KDJ  RMI  SKDJ  CCI  RSI ...
-#   【成交量指标（表36）】
-#     MAAMT  SROCVOL  PVO ...
-#   【价量指标（表37）】
-#     VWAP  FI  NVI  PVT ...
-```
-
-#### 1.2 最简运行方式
-
-只需要指定**股票代码 + 指标名称**即可运行：
-
-```bash
-# KDJ 指标
+# 最简模式（必填：股票 + 指标）
 python run_backtest.py --stocks 000012 --indicator KDJ
 
-# MACD 指标
-python run_backtest.py --stocks 000012,000014 --indicator MACD
-
-# RSI 指标
-python run_backtest.py --stocks 000012 --indicator RSI
-```
-
-#### 1.3 自定义回测参数
-
-```bash
+# 多只股票 + 指定时间 + 自定义指标参数
 python run_backtest.py \
-    --stocks 000012,000014,000016 \    # 股票代码，逗号分隔
-    --start 2022-01-01 \                # 开始日期
-    --end 2024-12-31 \                  # 结束日期（不填则到最新）
-    --indicator MACD \                  # 指标名称（大写）
-    --tag my_first_backtest             # 你的标记（用于输出文件名）
-```
-
-#### 1.4 调整策略参数
-
-```bash
-# 以 KDJ 为例，参数 N = 计算周期（默认40）
-python run_backtest.py \
-    --stocks 000012 \
-    --indicator KDJ \
-    --n 30            # 改小更灵敏，改大更平滑
-
-# 以 MACD 为例，参数 N1(快线), N2(慢线), N3(信号线)
-python run_backtest.py \
-    --stocks 000012 \
+    --stocks 000012,000014,000016 \
+    --start 2024-01-01 \
+    --end 2024-12-31 \
     --indicator MACD \
-    --n1 10 \         # 快线EMA周期（默认12）
-    --n2 24 \         # 慢线EMA周期（默认26）
-    --n3 7            # 信号线EMA周期（默认9）
-```
+    --n1 10 \
+    --n2 24 \
+    --n3 7
 
-#### 1.5 调整风控参数
-
-```bash
-# 止盈止损可以自己设
+# 自定义风控参数
 python run_backtest.py \
     --stocks 000012 \
-    --signal KAMA \
-    --stop-loss 0.03 \      # 3% 止损（默认5%）
-    --stop-profit 0.15 \    # 15% 止盈（默认20%）
-    --drawdown 0.02         # 2% 回落止盈（默认3%）
+    --indicator RSI \
+    --stop-loss 0.03 \
+    --stop-profit 0.15 \
+    --money 50000
+
+# 自定义标签（输出文件前缀）
+python run_backtest.py --stocks 000012 --indicator KDJ --tag my_test
 ```
 
-#### 1.6 调整交易成本
+### 参数列表
 
-```bash
-python run_backtest.py \
-    --stocks 000012 \
-    --money 50000 \        # 每只股票初始资金（默认10000）
-    --slippage 0.001 \     # 滑点0.1%（默认0.3%）
-    --commission 0.0003 \  # 佣金万分之三（默认万分之五）
-    --tax 0.0005           # 印花税万分之五（默认千分之一）
-```
-
-#### 1.7 查看指标的详细参数
-
-所有指标的默认参数在 `config/backtest_config.py` 中有完整注释。
-你也可以在运行时通过 `--n`、`--n1`、`--n2`、`--n3`、`--m` 覆盖：
-
-```bash
-python run_backtest.py --stocks 000012 --indicator KDJ --n 50
-python run_backtest.py --stocks 000012 --indicator MACD --n1 10 --n2 24 --n3 7
-```
-
-> 💡 **提示**：全部 97 个指标的统一入口是 `GF` 策略，但命令中只需写 `--indicator 指标名`，
-> 框架自动使用 GF 策略查找指标。
-
-#### 回测完成后你会看到什么？
-
-```
-[回测引擎] 开始回测: KAMA_2025-05-30
-  股票池: 2 只
-  时间:   2024-06-01 → 2024-12-31
-  策略:   KAMA
-  输出:   output/20250530/1719/
---------------------------------------------------
-[1/5] 加载数据…
-  ✓ 加载 2 只股票, 1 个基准指数
-[2/5] 生成交易信号…
-  ✓ 信号策略: KAMA
-[3/5] 施加风控规则…
-[4/5] 计算资金曲线…
-[5/5] 计算绩效 & 生成报告…
-  📄 交易记录 → output/20250530/1719/KAMA_trade_records.csv
-  📄 资金曲线 → output/20250530/1719/KAMA_account_curve.csv
-  📄 绩效指标 → output/20250530/1719/KAMA_metrics.csv
-  📊 收益曲线图 → output/20250530/1719/KAMA_returns.png
-
-==================================================
-  回测绩效摘要
-==================================================
-  总收益率        :     0.4916
-  年化收益率       :     1.0232
-  基准收益率       :     0.0965
-  超额收益        :     0.3952
-  夏普比率        :     3.1428
-  最大回撤        :    -0.0499
-  胜率(日)       :     0.3706
-  总交易次数       : 50
-  止损次数        : 0
-  止盈次数        : 4
-  平均持股天数      : 7.7
-==================================================
-```
-
-#### 各项指标解读
-
-| 指标 | 含义 | 什么算好 |
-|------|------|---------|
-| **总收益率** | 从开始到结束赚了多少 | 越高越好 |
-| **年化收益率** | 换算成一年的收益率 | >0.15 算不错 |
-| **夏普比率** | 每承担1份风险换多少收益 | >1 可以，>2 很好 |
-| **最大回撤** | 最惨的时候亏了多少 | 越小越好，> -0.2 要注意 |
-| **胜率(日)** | 赚钱的天数占比 | >0.5 说明策略稳定 |
-| **超额收益** | 比大盘多赚多少 | >0 说明跑赢了大盘 |
-
----
-
-### 2. 多策略对比
-
-想知道"哪个策略在我选的股票上表现最好"？用对比模式。
-
-#### 2.1 查看可对比的策略
-
-```bash
-python run_compare.py --list
-
-# 输出（共 97 个）：
-#   1. DPO
-#   2. ER
-#   3. TII
-#   ...
-```
-
-#### 2.2 对比策略示例
-
-```bash
-# 默认对比 4 个常用指标（KDJ, RSI, MACD, CCI）
-python run_compare.py
-
-# 它会依次运行4次回测，然后生成对比报告
-```
-
-#### 2.3 对比指定指标
-
-```bash
-# 对比 KDJ 和 MACD
-python run_compare.py --strategies KDJ,MACD
-
-# 对比 3 个常用反转指标
-python run_compare.py --strategies KDJ,RSI,CCI
-```
-
-#### 2.4 自定义对比参数
-
-```bash
-python run_compare.py \
-    --strategies KDJ,RSI,MACD \       # 对比这3个指标
-    --stocks 000012,000014 \           # 在这2只股票上
-    --start 2023-01-01                        # 从2023年开始
-```
-
-#### 对比报告里有什么？
-
-**CSV表格**（`output/comparison_*.csv`）：
-
-| 策略名称 | 总收益率 | 年化收益率 | 夏普比率 | 最大回撤 | 交易次数 |
-|---------|---------|-----------|---------|---------|---------|
-| KAMA | 0.4916 | 1.0232 | 3.1428 | -0.0499 | 50 |
-| BOLL_DKBL | 0.0712 | 0.2354 | 2.1136 | -0.0284 | 4 |
-
-**收益曲线叠加图**（`output/comparison_*.png`）：
-- 不同策略的收益率曲线用不同颜色画在一起
-- 一眼看出哪个策略赚得多、哪个波动大
-
----
-
-### 3. 参数优化
-
-每个策略都有参数（比如KAMA的n、fast、slow）。**参数设置不同，结果天差地别**。优化模式帮你自动找到最佳参数组合。
-
-#### 3.1 查看预置参数网格
-
-```bash
-python run_optimize.py --list-grids
-
-# 输出（每个策略的可优化参数范围）：
-#   KAMA:
-#     n: [5, 10, 15, 20, 30]
-#     fast: [2, 3]
-#     slow: [20, 25, 30, 35, 40]
-#   BOLL_DKBL:
-#     period: [15, 20, 25, 30]
-#     std_multiplier: [1.8, 2.0, 2.2]
-#     volume_ratio: [1.3, 1.5, 1.8]
-```
-
-#### 3.2 运行参数优化
-
-```bash
-# 优化KAMA参数，以夏普比率为目标
-python run_optimize.py --strategy KAMA
-
-# 优化BOLL_DKBL参数，以卡玛比率为目标
-python run_optimize.py --strategy BOLL_DKBL --objective calmar_ratio
-```
-
-**优化目标可选**（`--objective`）：
-
-| 目标名称 | 含义 |
-|---------|------|
-| `total_return` | 总收益率 |
-| `annualized_return` | 年化收益率 |
-| `sharpe_ratio` | 夏普比率（默认） |
-| `sortino_ratio` | Sortino比率 |
-| `calmar_ratio` | 卡玛比率 |
-| `win_rate` | 胜率 |
-| `profit_factor` | 盈亏比 |
-
-#### 3.3 自定义参数范围
-
-```bash
-# 只测试部分参数组合
-python run_optimize.py \
-    --strategy KAMA \
-    --param-ranges '{"n": [5, 10, 15], "fast": [2], "slow": [25, 30, 35]}'
-```
-
-#### 3.4 只看最好的几个结果
-
-```bash
-python run_optimize.py --strategy KAMA --top-k 10
-```
-
-#### 优化完成后你会看到什么？
-
-```
-[参数优化] 目标: sharpe_ratio, 网格: 50 组参数
-  参数范围: {'n': [5,10,15,20,30], 'fast': [2,3], 'slow': [20,25,30,35,40]}
---------------------------------------------------
-  [1/50] {'n': 5, 'fast': 2, 'slow': 20}… ✓ sharpe_ratio=1.2345
-  [2/50] {'n': 5, 'fast': 2, 'slow': 25}… ✓ sharpe_ratio=1.4567
-  ...
-  [50/50] {'n': 30, 'fast': 3, 'slow': 40}… ✓ sharpe_ratio=2.3456
-
-============================================================
-  🏆 最佳 5 组参数 (目标: sharpe_ratio)
-============================================================
-  #1: {'n': 15, 'fast': 2, 'slow': 30} → sharpe_ratio = 3.1428
-  #2: {'n': 10, 'fast': 2, 'slow': 35} → sharpe_ratio = 2.9876
-  ...
-
-  📄 优化结果 → output/optimization_sharpe_ratio_xxx.csv
-  📊 热力图 → output/optimization_heatmap_sharpe_ratio_xxx.png
-```
-
-**热力图**用颜色深浅直观展示参数组合的优劣——红色=好，绿色=差。
-
----
-
-### 4. 添加新策略
-
-想加入自己的交易策略？非常简单，只需要4步：
-
-#### 第一步：在 `signals/` 下创建策略文件
-
-```python
-# signals/my_strategy.py
-import pandas as pd
-from core.signal_engine import BaseSignal
-
-
-class MyStrategy(BaseSignal):
-    """我的神奇策略：5日均线上穿20日均线买入，下穿卖出"""
-
-    # 策略名称（用于列名前缀和信号文件名）
-    name = 'MY_STRATEGY'
-
-    # 参数（可以自己设默认值）
-    def __init__(self, fast_period: int = 5, slow_period: int = 20):
-        self.params = {
-            'fast_period': fast_period,
-            'slow_period': slow_period,
-        }
-
-    def compute(self, data: pd.DataFrame) -> pd.DataFrame:
-        """
-        这是唯一需要实现的方法。
-        
-        参数 data: 包含 date, open, high, low, close, volume 的DataFrame
-        返回: 添加了 {name}_signal 列的 DataFrame
-        
-        信号约定:
-          1  = 买入
-          -1 = 卖出
-          0  = 无操作
-        """
-        df = data.copy()
-
-        # 算均线
-        ma_fast = df['close'].rolling(self.params['fast_period']).mean()
-        ma_slow = df['close'].rolling(self.params['slow_period']).mean()
-
-        # 生成信号
-        df['MY_STRATEGY_signal'] = 0
-
-        # 上穿买入
-        buy_cond = (ma_fast > ma_slow) & (ma_fast.shift(1) <= ma_slow.shift(1))
-        df.loc[buy_cond, 'MY_STRATEGY_signal'] = 1
-
-        # 下穿卖出
-        sell_cond = (ma_fast < ma_slow) & (ma_fast.shift(1) >= ma_slow.shift(1))
-        df.loc[sell_cond, 'MY_STRATEGY_signal'] = -1
-
-        return df
-```
-
-#### 第二步：在 `run_backtest.py` 中注册
-
-```python
-# 在文件开头的导入部分加上这行
-from signals.my_strategy import MyStrategy
-
-# 在 SIGNAL_FACTORY 字典里加上这行
-SIGNAL_FACTORY = {
-    'GF': GFSignal,             # GF 综合指标（97个）
-    'MY_STRATEGY': MyStrategy,  # ← 加上你的策略
-}
-```
-
-#### 第三步：运行回测
-
-```bash
-python run_backtest.py \
-    --stocks 000012,000014 \
-    --start 2022-01-01 \
-    --signal MY_STRATEGY \
-    --fast-period 5 \      # 你的策略参数
-    --slow-period 20
-```
-
-> **注意**：框架会自动把参数名中的 `-` 转换为 `_`，所以 `--fast-period` 对应 `fast_period`。
-
-#### 第四步：加入对比
-
-```bash
-# 你的策略和已有的指标一起对比
-python run_compare.py --strategies KDJ,RSI,MY_STRATEGY
-```
-
-**总共只需要写一个类（约30行）+ 一行注册 + 一行命令，就完成了！**
-
----
-
-## 📋 所有命令与参数速查表
-
-### 回测命令（`run_backtest.py`）
+#### 基本参数
 
 | 参数 | 类型 | 必填 | 说明 | 默认值 |
 |------|------|------|------|--------|
 | `--stocks` | 字符串 | ✅ | 股票代码，多只逗号分隔，如 `000012,000014` | — |
-| `--start` | 日期 | ❌ | 回测开始日期 `YYYY-MM-DD` | `2022-01-01` |
-| `--end` | 日期 | ❌ | 回测结束日期 `YYYY-MM-DD`，留空=到最新 | 最新 |
-| `--indicator` | 字符串 | ❌ | 技术指标名称（大写），如 KDJ, MACD, RSI | `KDJ` |
-| `--tag` | 字符串 | ❌ | 输出文件命名标记 | 自动 |
-| `--list-indicators` | 标志 | ❌ | 列出全部 97 个可用指标 | — |
-| `--n` | 整数 | ❌ | 指标参数 N（主周期），含义取决于指标 | 指标默认 |
-| `--n1` | 整数 | ❌ | 指标参数 N1 | 指标默认 |
-| `--n2` | 整数 | ❌ | 指标参数 N2 | 指标默认 |
-| `--n3` | 整数 | ❌ | 指标参数 N3 | 指标默认 |
-| `--m` | 整数 | ❌ | 指标参数 M（辅助周期） | 指标默认 |
-| `--money` | 浮点数 | ❌ | **每只股票初始资金（元）** | `10000` |
-| `--slippage` | 浮点数 | ❌ | **滑点**（买入上浮、卖出入下的比例） | `0.003` (0.3%) |
-| `--commission` | 浮点数 | ❌ | **佣金比例** | `0.0005` (万分之五) |
-| `--tax` | 浮点数 | ❌ | **印花税比例**（卖出时收取） | `0.001` (千分之一) |
-| `--position` | 浮点数 | ❌ | **每笔交易仓位比例** | `0.95` (95%) |
-| `--stop-loss` | 浮点数 | ❌ | **止损比例**：开盘价 < 买入价×(1-比例) 时卖出 | `0.05` (5%) |
-| `--stop-profit` | 浮点数 | ❌ | **止盈触发比例**：最高价 >= 买入价×(1+比例) 时激活 | `0.20` (20%) |
-| `--drawdown` | 浮点数 | ❌ | **回落止盈比例**：止盈激活后，开盘价 < 最高价×(1-比例) 时卖出 | `0.03` (3%) |
+| `--start` | 字符串 | ❌ | 开始日期 `YYYY-MM-DD` | `2022-01-01` |
+| `--end` | 字符串 | ❌ | 结束日期 `YYYY-MM-DD`，不填=到最新 | 最新 |
+| `--indicator` | 字符串 | ❌ | 技术指标名称（大写）。查看全部: `--list-indicators` | `KDJ` |
+| `--tag` | 字符串 | ❌ | 输出文件名前缀 | 指标名_开始日期 |
+| `--list-indicators` | 标志 | ❌ | 列出全部 97 个指标 | — |
 
-> **提示**：`--stop-loss`、`--stop-profit`、`--drawdown`、`--slippage` 等带横线的参数，
-> 在命令行中按 `--参数名 值` 格式输入（**不要用等号**）。
+#### 指标参数覆盖（不同指标含义不同，见 `signals/gf.py` 中的 `_DEFAULT_PARAMS`）
 
-### 实际命令示例对照
+| 参数 | 类型 | 说明 | 适用指标示例 |
+|------|------|------|-------------|
+| `--n` | 整数 | 主周期参数 | KDJ(N)、RSI(N)、CCI(N)、WR(N) |
+| `--n1` | 整数 | 参数1 | MACD(N1=快线周期)、OBV(N1) |
+| `--n2` | 整数 | 参数2 | MACD(N2=慢线周期)、OBV(N2) |
+| `--n3` | 整数 | 参数3 | MACD(N3=信号线周期) |
+| `--m` | 整数 | 辅助周期 | SKDJ(M)、TYP(M) |
+
+#### 资金与交易成本
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--money` | 浮点数 | 每只股票初始资金（元） | `10000` |
+| `--slippage` | 浮点数 | 滑点（买入上浮、卖出入下比例） | `0.003` (0.3%) |
+| `--commission` | 浮点数 | 佣金比例（最低5元） | `0.0005` (万分之五) |
+| `--tax` | 浮点数 | 印花税比例（卖出时收取） | `0.001` (千分之一) |
+| `--position` | 浮点数 | 每笔交易仓位比例 | `0.95` (95%) |
+
+#### 风控参数
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--stop-loss` | 浮点数 | 止损比例：开盘价 < 买入价×(1−比例) 时卖出 | `0.05` (5%) |
+| `--stop-profit` | 浮点数 | 止盈触发比例：最高价 ≥ 买入价×(1+比例) 时激活 | `0.20` (20%) |
+| `--drawdown` | 浮点数 | 回落止盈比例：止盈激活后，开盘价 < 最高价×(1−比例) 时卖出 | `0.03` (3%) |
+
+### 参数常见错误
 
 ```bash
-# ❌ 错误写法（参数名不对）
-python run_backtest.py --stocks 300730 --start_date 2026-01-01 --end_date 2026-05-20 --indicator AWS
+# ❌ 错误：参数名不对
+python run_backtest.py --stocks 300730 --start_date 2026-01-01
 
-# ✅ 正确写法
-python run_backtest.py --stocks 300730 --start 2026-01-01 --end 2026-05-20 --indicator AWS
+# ✅ 正确
+python run_backtest.py --stocks 300730 --start 2026-01-01
 
-# 完整参数示例
-python run_backtest.py \
-    --stocks 300730 \              # 股票代码
-    --start 2026-01-01 \           # 开始日期
-    --end 2026-05-20 \             # 结束日期
-    --indicator KDJ \              # 指标名称
-    --money 50000 \                # 初始资金5万
-    --stop-loss 0.03 \             # 3%止损
-    --stop-profit 0.15 \           # 15%止盈
-    --drawdown 0.02 \              # 2%回落止盈
-    --slippage 0.001 \             # 0.1%滑点
-    --commission 0.0003            # 万分之三佣金
+# ❌ 错误：用等号赋值
+python run_backtest.py --stop-loss=0.03
+
+# ✅ 正确（用空格分隔）
+python run_backtest.py --stop-loss 0.03
 ```
 
-### 对比命令（`run_compare.py`）
+### 运行过程输出
 
-| 参数 | 类型 | 必填 | 说明 | 默认值 |
-|------|------|------|------|--------|
-| `--strategies` | 字符串 | ❌ | 指标名称逗号分隔，如 `KDJ,MACD,RSI` | KDJ,RSI,MACD,CCI |
-| `--stocks` | 字符串 | ❌ | 股票代码，逗号分隔 | 配置文件默认 |
-| `--start` | 日期 | ❌ | 开始日期 | 配置文件默认 |
-| `--end` | 日期 | ❌ | 结束日期 | 最新 |
-| `--list` | 标志 | ❌ | 列出全部可用指标 | — |
-| `--money` | 浮点数 | ❌ | 每只股票初始资金 | 10000 |
-| `--stop-loss` | 浮点数 | ❌ | 止损比例 | 0.05 |
-
-### 优化命令（`run_optimize.py`）
-
-| 参数 | 类型 | 必填 | 说明 | 默认值 |
-|------|------|------|------|--------|
-| `--indicator` | 字符串 | ❌ | 要优化的指标名称 | `KDJ` |
-| `--objective` | 字符串 | ❌ | 优化目标 | `sharpe_ratio` |
-| | | | 可选：`total_return` 总收益率 | |
-| | | | `annualized_return` 年化收益率 | |
-| | | | `sharpe_ratio` 夏普比率 | |
-| | | | `sortino_ratio` Sortino比率 | |
-| | | | `calmar_ratio` 卡玛比率 | |
-| | | | `win_rate` 胜率 | |
-| | | | `profit_factor` 盈亏比 | |
-| `--param-ranges` | JSON | ❌ | 自定义参数范围，如 `'{"N":[30,40,50]}'` | 预置网格 |
-| `--top-k` | 整数 | ❌ | 输出最佳组合数 | `5` |
-| `--stocks` | 字符串 | ❌ | 股票代码 | 配置文件默认 |
-| `--start` | 日期 | ❌ | 开始日期 | 配置文件默认 |
-| `--list-grids` | 标志 | ❌ | 列出所有预置参数网格 | — |
+```
+[回测引擎] 开始回测: KDJ_2024-01-01
+  股票池: 3 只
+  时间:   2024-01-01 → 2024-12-31
+  策略:   GF
+  输出:   output/20250530/1719/
+--------------------------------------------------
+[1/5] 加载数据…
+  ✓ 加载 3 只股票, 1 个基准指数
+[2/5] 生成交易信号…
+  ✓ 信号策略: GF
+[3/5] 施加风控规则…
+[4/5] 计算资金曲线…
+[5/5] 计算绩效 & 生成报告…
+  📄 交易记录 → output/20250530/1719/KDJ_trade_records.csv
+  📄 资金曲线 → output/20250530/1719/KDJ_account_curve.csv
+  📄 绩效指标 → output/20250530/1719/KDJ_metrics.csv
+  📊 收益曲线图 → output/20250530/1719/KDJ_returns.png
+```
 
 ---
 
-## 🔍 各模块详解
+## 📖 多指标对比（`run_compare.py`）
 
-### 核心模块（`core/`）
+在相同的股票和时间范围下，同时运行多个指标并对比结果。
 
-| 文件 | 类名 | 一句话说明 |
-|------|------|-----------|
-| `data_loader.py` | `DataLoader` | 从CSV读股票数据，清洗、校验、裁剪日期 |
-| `signal_engine.py` | `SignalEngine` | 用注册的策略计算买卖信号，合成仓位 |
-| `signal_engine.py` | `BaseSignal` | **所有策略的爸爸**，新策略继承它 |
-| `risk_manager.py` | `RiskManager` | 止盈止损、涨跌停限制 |
-| `equity_curve.py` | `EquityCurveCalculator` | 根据买卖信号算每天赚了多少钱 |
-| `metrics.py` | `MetricsCalculator` | 算夏普比率、最大回撤等绩效指标 |
-| `reporter.py` | `Reporter` | 把结果保存为CSV和图表 |
-| `engine.py` | `BacktestEngine` | **总指挥**，把上面所有模块串起来 |
-| `comparator.py` | `StrategyComparator` | 多策略对比 |
-| `optimizer.py` | `ParameterOptimizer` | 参数网格优化 |
+```bash
+# 列出所有可用指标
+python run_compare.py --list
 
-#### 回测引擎（`BacktestEngine`）的5步流水线
+# 对比 4 个常用指标（默认）
+python run_compare.py
 
-```
-Step 1: DataLoader.load_stock_batch()   →  加载股票数据
-Step 2: SignalEngine.generate()         →  计算买卖信号
-Step 3: RiskManager.apply_*()           →  施加风控
-Step 4: EquityCurveCalculator.compute() →  算资金曲线
-Step 5: MetricsCalculator + Reporter    →  算指标 + 输出报告
+# 对比指定的几个指标
+python run_compare.py --strategies KDJ,MACD,RSI
+
+# 自定义股票和参数
+python run_compare.py \
+    --strategies KDJ,RSI,CCI \
+    --stocks 000012,000014 \
+    --start 2023-01-01 \
+    --money 50000 \
+    --stop-loss 0.03
 ```
 
-### 策略模块（`signals/`）
+### 对比参数
 
-| 文件 | 类名 | 策略思路 |
-|------|------|---------|
-| `kama.py` | `KAMASignal` | 自适应均线，价格上穿/下穿KAMA线 |
-| `macd_cdtd.py` | `MACDCDTDSignal` | MACD柱状图面积递减=底背离买入，高度递减=顶背离卖出 |
-| `arbr.py` | `ARBRSignal` | AR上穿150（恐慌）+ BR下穿50（悲观）= 诱空买入 |
-| `boll_dkbl.py` | `BOLLDKBLSignal` | 布林带收口后价格突破方向 = 变盘信号 |
-| `boll_tdcs.py` | `BOLLTDCSignal` | 价格在布林带位置 + RSI + MACD = 综合判断 |
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--strategies` | 字符串 | 指标名称逗号分隔 | `KDJ,RSI,MACD,CCI` |
+| `--stocks` | 字符串 | 股票代码 | 配置文件默认 |
+| `--start` | 字符串 | 开始日期 | 配置文件默认 |
+| `--end` | 字符串 | 结束日期 | 最新 |
+| `--list` | 标志 | 列出所有指标 | — |
+| `--money` | 浮点数 | 每只股票初始资金 | 10000 |
+| `--stop-loss` | 浮点数 | 止损比例 | 0.05 |
+
+---
+
+## 📖 参数优化（`run_optimize.py`）
+
+自动搜索指标的最佳参数组合。
+
+```bash
+# 查看所有预置参数网格
+python run_optimize.py --list-grids
+
+# 优化 KDJ 参数（目标：夏普比率）
+python run_optimize.py --indicator KDJ
+
+# 优化 MACD 参数（目标：卡玛比率）
+python run_optimize.py --indicator MACD --objective calmar_ratio
+
+# 自定义搜索范围和股票
+python run_optimize.py \
+    --indicator KDJ \
+    --param-ranges '{"N": [30, 40, 50]}' \
+    --stocks 000012 \
+    --top-k 10
+```
+
+### 优化目标
+
+| 参数值 | 中文含义 |
+|--------|---------|
+| `total_return` | 总收益率 |
+| `annualized_return` | 年化收益率 |
+| `sharpe_ratio` | 夏普比率（默认） |
+| `sortino_ratio` | Sortino 比率 |
+| `calmar_ratio` | 卡玛比率 |
+| `win_rate` | 胜率 |
+| `profit_factor` | 盈亏比 |
+
+### 优化参数
+
+| 参数 | 类型 | 说明 | 默认值 |
+|------|------|------|--------|
+| `--indicator` | 字符串 | 要优化的指标名称 | `KDJ` |
+| `--objective` | 字符串 | 优化目标 | `sharpe_ratio` |
+| `--param-ranges` | JSON | 自定义参数范围 | 预置网格 |
+| `--top-k` | 整数 | 输出最佳组合数 | `5` |
+| `--stocks` | 字符串 | 股票代码 | 配置文件 |
+| `--start` | 字符串 | 开始日期 | 配置文件 |
+| `--list-grids` | 标志 | 列出预置网格 | — |
+
+### 优化结果示例
+
+```
+[参数优化] 目标: sharpe_ratio, 网格: 25 组参数
+--------------------------------------------------
+  [1/25] {'N': 20}… ✓ sharpe_ratio=1.2345
+  [2/25] {'N': 30}… ✓ sharpe_ratio=1.5678
+  ...
+
+  🏆 最佳 5 组参数 (目标: sharpe_ratio)
+  #1: {'N': 30} → sharpe_ratio = 3.1428
+  #2: {'N': 40} → sharpe_ratio = 2.9876
+```
+
+---
+
+## 📋 可用指标一览
+
+共 **97 个技术指标**，分为以下 5 大类：
+
+### 价格动量指标（62 个）
+
+```
+DPO  ER  TII  PO  MA_DISPLACED  T3  POS  PAC  ADTM
+ZLMACD  TMA  TYP  KDJD  VMA  BIAS  WMA_M  DDI  HMA
+SROC  EXPMA  DC  VIDYA  QSTICK  FB  DEMA  APZ  ASI
+ARRON  KC  MTM  CR  BOP  HULLMA  COPP  ENV  RSIH
+HLMA  TSI  BIAS36  UOS  DZRSI  DZCCI  CMF  PPO  RWI
+ATR  WAD  KST  VI  DMA_I  MICD  PMO  RCCD  KAMA  AWS
+ARBR  ADXR  SMI  SI  DO  DBCD  CV
+```
+
+### 价格反转指标（10 个）
+
+```
+KDJ  RMI  SKDJ  CCI  RSI  ROC  WR  STC  RVI  RSIS
+```
+
+### 成交量指标（6 个）
+
+```
+MAAMT  SROCVOL  PVO  BIASVOL  MACDVOL  ROCVOL
+```
+
+### 价量指标（17 个）
+
+```
+VWAP  FI  NVI  PVT  RSIV  AMV  VRAMT  WVAD  OBV
+PVI  TMF  MFI  ADOSC  VAO  VR  KO  EMV
+```
+
+### 混合指标（1 个）
+
+```
+MACD
+```
+
+> **说明**：在命令行中使用时，直接写指标名（**大写**），如 `--indicator MACD`、
+
+---
+
+## 📊 输出结果解读
+
+### 绩效指标
+
+| 指标 | 含义 | 说明 |
+|------|------|------|
+| 总收益率 | 回测期间总收益 / 初始资金 | >0 表示盈利 |
+| 年化收益率 | 按 252 个交易日折算的年收益 | >0.15 较好 |
+| 基准收益率 | 同期沪深300涨跌幅 | 对比策略是否跑赢大盘 |
+| 超额收益 | 策略收益 - 基准收益 | >0 说明跑赢大盘 |
+| 夏普比率 | (收益 - 无风险利率) / 波动率 | >1 可用，>2 优秀 |
+| Sortino比率 | 同上，但只计算下行波动 | 越大越好 |
+| 最大回撤 | 最高点到最低点的最大跌幅 | 越小越安全 |
+| 胜率(日) | 正收益天数占比 | >0.5 说明策略稳定 |
+| 总交易次数 | 买入+卖出总次数 | 越多说明交易越频繁 |
+| 止损次数 | 触发了止损的次数 | 仅供参考 |
+| 止盈次数 | 触发了止盈的次数 | 越高越好 |
+
+### 输出文件
+
+路径格式：`output/YYYYMMDD/HHMM/`
+
+| 文件 | 内容 |
+|------|------|
+| `*_trade_records.csv` | 每笔交易的买卖明细 |
+| `*_account_curve.csv` | 每日资金曲线 |
+| `*_metrics.csv` | 绩效指标汇总 |
+| `*_returns.png` | 收益曲线图（策略 vs 基准） |
 
 ---
 
 ## ❓ 常见问题
 
-### Q1: 我改了代码，但运行还是原来的效果？
+### Q1: 必须指定哪些参数？
 
-- 检查是否保存了文件
-- 检查终端是否在项目根目录（`002_self_backtest_reborn/`）
-- 如果是新增的策略：检查 `run_backtest.py` 里的 `SIGNAL_FACTORY` 是否注册了
-
-### Q2: 报错 "股票数据文件不存在"？
-
-- 确认股票代码是否存在（输入 6 位数字，如 `000012`）
-- 确认数据目录 `/public/home/hpc/zhulei/superman/quant/data/input/` 下有对应的 CSV 文件
-- 确认股票代码没有前导的 `sh.` 或 `sz.`
-
-### Q3: 报错 "股票为ST股" 或 "为次新股"？
-
-- ST 股（退市风险股）会自动跳过
-- 次新股（上市不足240个交易日）会自动跳过
-- 这是框架的风控逻辑，不是 bug
-
-### Q4: 回测结果很差怎么办？
-
-试试：
-1. **参数优化**：`python run_optimize.py --strategy KAMA` 找最佳参数
-2. **换策略**：`python run_compare.py --strategies KAMA,BOLL_DKBL,MACD_CDTD`
-3. **调整风控**：收紧止损 `--stop-loss 0.03`，或者放宽止盈 `--stop-profit 0.30`
-4. **换时间段**：不同行情适合不同策略
-
-### Q5: 怎么添加自己的股票池？
-
-编辑 `config/backtest_config.py`，在 `STOCK_POOLS` 字典里添加：
-
-```python
-STOCK_POOLS = {
-    'my_picks': [
-        '000001', '000002', '000651', '000333', '000858',
-    ],
-    # ... 已有的
-}
-```
-
-然后使用：`python run_backtest.py --plan my_plan`
-
-> 注意：还需要在 `BACKTEST_PLANS` 中定义一个使用 `my_picks` 的方案。
-
-### Q6: 我想只跑1只股票快速测试？
+最少只需要 `--stocks` 和 `--indicator`：
 
 ```bash
-python run_backtest.py --stocks 000012 --start 2024-01-01 --end 2024-06-30
+python run_backtest.py --stocks 000012 --indicator KDJ
 ```
 
-### Q7: 输出文件在哪里？
+### Q2: 怎么看有哪些指标可用？
 
-输出目录按**日期/时间**自动分层组织，不同时间运行的结果互不干扰：
-
-```
-output/
-├── 20250530/               ← 运行回测的日期（YYYYMMDD）
-│   └── 1719/               ← 运行回测的时间（HHMM，24小时制）
-│       ├── KAMA_trade_records.csv   ← 交易明细
-│       ├── KAMA_account_curve.csv   ← 每天的总资产、现金、股票市值
-│       ├── KAMA_metrics.csv         ← 各项绩效指标汇总
-│       └── KAMA_returns.png         ← 收益率曲线图
-├── 20250531/               ← 明天再跑就自动新建目录
-│   └── 0902/
-│       ├── KAMA_trade_records.csv
-│       └── ...
-└── ...
+```bash
+python run_backtest.py --list-indicators
 ```
 
-**文件名说明**：
-- `KAMA_*.csv` — 前缀 = 策略名称（`--tag` 参数可自定义）
-- `trade_records` — 每笔交易的买入卖出明细
-- `account_curve` — 账户每日资金曲线（含基准对比）
-- `metrics` — 各项绩效指标汇总
-- `returns.png` — 收益率曲线对比图
+### Q3: 怎么看每个指标的默认参数？
+
+查看 `config/backtest_config.py` 中注释部分的指标列表，
+以及 `signals/gf.py` 中的 `_DEFAULT_PARAMS` 字典。
+
+### Q4: 运行报错 "股票数据文件不存在"？
+
+- 确认股票代码是 6 位数字（如 `000012`）
+- 确认数据目录 `/public/home/hpc/zhulei/superman/quant/data/input/` 下有对应 CSV
+
+### Q5: 运行报错 "股票为ST股" 或 "为次新股"？
+
+- ST 股（退市风险股）框架自动跳过
+- 次新股（上市不足 240 个交易日）自动跳过
+- 不是 bug，是风控逻辑
+
+### Q6: 输出文件在哪里？
+
+```bash
+# 查看按日期时间组织的输出
+ls output/20260530/1719/
+```
+
+### Q7: 参数名后面的 `--` 和变量名有什么区别？
+
+命令行参数用 `--stop-loss`（横线），代码内部用 `stop_loss_pct`（下划线）。
+框架会自动转换，不用操心。
+
+### Q8: 不同时间运行的结果会互相覆盖吗？
+
+**不会**。每次运行都会生成 `output/YYYYMMDD/HHMM/` 时间目录，完全隔离。
 
 ---
 
-## 🚀 下一步可以做什么？
-
-- [x] 添加更多策略（如 RSI、KDJ、VOL 等）
-- [x] 更多股票池（全A股扫描）
-- [x] 异步并行回测（加快多股票回测速度）
-- [x] 机器学习信号（结合 XGBoost/LSTM 生成信号）
-- [x] 实时信号 + 自动交易
-
----
-
-> **Happy Quanting! 🚀** — 有问题随时问
+> **Happy Quanting! 🚀**
