@@ -3,45 +3,38 @@
 002_self_backtest_reborn — 回测入口脚本
 
 用法:
-  # 使用预置方案
-  python run_backtest.py --plan kama_demo
+  # 最简用法（KDJ指标，单只股票）
+  python run_backtest.py --stocks 000012 --indicator KDJ
 
-  # 使用默认方案 (kama_demo)
-  python run_backtest.py
+  # 完整自定义
+  python run_backtest.py \\
+    --stocks 000012,000014 \\
+    --start 2022-01-01 \\
+    --end 2024-12-31 \\
+    --indicator MACD \\
+    --money 50000 \\
+    --stop-loss 0.03
 
-  # 自定义参数
-  python run_backtest.py --stocks 000012,000014 --start 2022-01-01 --end 2024-12-31
-                         --signal KAMA --n 15 --fast 3 --slow 40
-                         --stop-loss 0.03 --stop-profit 0.15
+  # 查看所有可用指标
+  python run_backtest.py --list-indicators
 """
 
 import argparse
-import sys
 import os
+import sys
 
-# 将项目根目录加入 sys.path（确保 core/ 和 signals/ 可以被导入）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.engine import BacktestEngine, BacktestConfig
-from signals.kama import KAMASignal
-from signals.macd_cdtd import MACDCDTDSignal
-from signals.arbr import ARBRSignal
-from signals.boll_dkbl import BOLLDKBLSignal
-from signals.boll_tdcs import BOLLTDCSignal
 from signals.gf import GFSignal
-from config.backtest_config import BACKTEST_PLANS, DEFAULT_CONFIG
+from config.backtest_config import DEFAULT_CONFIG
 
 
 # ============================================================================
-# 信号工厂：根据名称和参数创建策略实例
+# 信号工厂：仅有 GF 综合策略（涵盖 97 个技术指标）
 # ============================================================================
 
 SIGNAL_FACTORY = {
-    'KAMA': KAMASignal,
-    'MACD_CDTD': MACDCDTDSignal,
-    'ARBR': ARBRSignal,
-    'BOLL_DKBL': BOLLDKBLSignal,
-    'BOLL_TDCS': BOLLTDCSignal,
     'GF': GFSignal,
 }
 
@@ -64,49 +57,58 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 示例:
-  python run_backtest.py --plan kama_demo
-  python run_backtest.py --stocks 000012,000014 --signal KAMA
-  python run_backtest.py --list-plans
+  python run_backtest.py --stocks 000012 --indicator KDJ
+  python run_backtest.py --stocks 000012,000014 --indicator MACD
+  python run_backtest.py --list-indicators
         ''',
     )
 
-    parser.add_argument('--plan', type=str, default='',
-                        help='预置回测方案名称（--list-plans 查看所有）')
     parser.add_argument('--list-plans', action='store_true',
-                        help='列出所有预置方案')
+                        help='（已弃用）保留兼容')
+    parser.add_argument('--list-indicators', action='store_true',
+                        help='列出所有可用技术指标（97个）')
     parser.add_argument('--stocks', type=str, default='',
-                        help='股票代码，逗号分隔，如 000012,000014')
+                        help='【必填】股票代码，多只逗号分隔，如 000012,000014')
     parser.add_argument('--start', type=str, default='',
-                        help='回测开始日期 YYYY-MM-DD')
+                        help='【可选】回测开始日期 YYYY-MM-DD，默认 2022-01-01')
     parser.add_argument('--end', type=str, default='',
-                        help='回测结束日期 YYYY-MM-DD')
-    parser.add_argument('--signal', type=str, default='',
-                        help='信号策略名称')
-    parser.add_argument('--benchmark', type=str, default='',
-                        help='基准指数代码')
+                        help='【可选】回测结束日期 YYYY-MM-DD，不填则到最新数据')
+    parser.add_argument('--indicator', type=str, default='KDJ',
+                        help='【可选】技术指标名称（大写），默认 KDJ。查看全部: --list-indicators')
     parser.add_argument('--tag', type=str, default='',
-                        help='回测标识（用于文件命名）')
+                        help='【可选】回测标识，用于输出文件命名')
 
     # 策略参数
-    parser.add_argument('--n', type=int, default=None)
-    parser.add_argument('--fast', type=int, default=None)
-    parser.add_argument('--slow', type=int, default=None)
-    # GF 综合指标参数（选择具体指标）
-    parser.add_argument('--indicator', type=str, default='',
-                        help='GF信号的具体指标名，如 KDJ, MACD, RSI, CCI 等')
+    parser.add_argument('--n', type=int, default=None,
+                        help='【可选】指标参数 N（周期），具体含义取决于指标')
+    parser.add_argument('--n1', type=int, default=None,
+                        help='【可选】指标参数 N1')
+    parser.add_argument('--n2', type=int, default=None,
+                        help='【可选】指标参数 N2')
+    parser.add_argument('--n3', type=int, default=None,
+                        help='【可选】指标参数 N3')
+    parser.add_argument('--m', type=int, default=None,
+                        help='【可选】指标参数 M')
 
     # 资金参数
     parser.add_argument('--money', type=float, default=None,
-                        help='每只股票初始资金')
-    parser.add_argument('--slippage', type=float, default=None)
-    parser.add_argument('--commission', type=float, default=None)
-    parser.add_argument('--tax', type=float, default=None)
-    parser.add_argument('--position', type=float, default=None)
+                        help='【可选】每只股票初始资金，默认10000元')
+    parser.add_argument('--slippage', type=float, default=None,
+                        help='【可选】滑点，默认0.003（0.3%%）')
+    parser.add_argument('--commission', type=float, default=None,
+                        help='【可选】佣金比例，默认0.0005（万分之五）')
+    parser.add_argument('--tax', type=float, default=None,
+                        help='【可选】印花税比例，默认0.001（千分之一）')
+    parser.add_argument('--position', type=float, default=None,
+                        help='【可选】仓位比例，默认0.95（95%%）')
 
     # 风控参数
-    parser.add_argument('--stop-loss', type=float, default=None)
-    parser.add_argument('--stop-profit', type=float, default=None)
-    parser.add_argument('--drawdown', type=float, default=None)
+    parser.add_argument('--stop-loss', type=float, default=None,
+                        help='【可选】止损比例，默认0.05（5%%）')
+    parser.add_argument('--stop-profit', type=float, default=None,
+                        help='【可选】止盈触发比例，默认0.20（20%%）')
+    parser.add_argument('--drawdown', type=float, default=None,
+                        help='【可选】从最高点回落止盈比例，默认0.03（3%%）')
 
     return parser.parse_args()
 
@@ -118,96 +120,123 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # 列出方案
-    if args.list_plans:
-        print('\n预置回测方案:')
-        print('=' * 50)
-        for name, plan in BACKTEST_PLANS.items():
-            stocks = plan.get('stock_codes', [])
-            desc = f'{name:20s} | {plan.get("signal_name")}'
-            desc += f' | {len(stocks)} 只 | {plan.get("start_date")}'
-            print(f'  {desc}')
-        print()
+    # 列出所有技术指标
+    if args.list_indicators:
+        print(f'\nGF 综合指标 — 共 {len(GFSignal.INDICATORS)} 个技术指标:\n')
+        # 按分类分组显示
+        categories = {
+            '价格动量指标（表34）': [
+                'DPO', 'ER', 'TII', 'PO', 'MA_DISPLACED', 'T3', 'POS',
+                'PAC', 'ADTM', 'ZLMACD', 'TMA', 'TYP', 'KDJD', 'VMA',
+                'BIAS', 'WMA_M', 'DDI', 'HMA', 'SROC', 'EXPMA', 'DC',
+                'VIDYA', 'QSTICK', 'FB', 'DEMA', 'APZ', 'ASI', 'ARRON',
+                'KC', 'MTM', 'CR', 'BOP', 'HULLMA', 'COPP', 'ENV',
+                'RSIH', 'HLMA', 'TSI', 'BIAS36', 'UOS', 'DZRSI', 'DZCCI',
+                'CMF', 'PPO', 'RWI', 'ATR', 'WAD', 'KST', 'VI',
+                'DMA_I', 'MICD', 'PMO', 'RCCD', 'KAMA', 'AWS', 'ARBR',
+                'ADXR', 'SMI', 'SI', 'DO', 'DBCD', 'CV',
+            ],
+            '价格反转指标（表35）': [
+                'KDJ', 'RMI', 'SKDJ', 'CCI', 'RSI', 'ROC', 'WR',
+                'STC', 'RVI', 'RSIS',
+            ],
+            '成交量指标（表36）': [
+                'MAAMT', 'SROCVOL', 'PVO', 'BIASVOL', 'MACDVOL', 'ROCVOL',
+            ],
+            '价量指标（表37）': [
+                'VWAP', 'FI', 'NVI', 'PVT', 'RSIV', 'AMV', 'VRAMT',
+                'WVAD', 'OBV', 'PVI', 'TMF', 'MFI', 'ADOSC', 'VAO', 'VR',
+                'KO', 'EMV',
+            ],
+            '混合指标': ['MACD'],
+        }
+        for cat, inds in categories.items():
+            print(f'  【{cat}】')
+            # 每行显示 5 个
+            for i in range(0, len(inds), 5):
+                row = inds[i:i + 5]
+                print(f'    {"  ".join(f"{x:12s}" for x in row)}')
+            print()
+        print('用法: python run_backtest.py --stocks 000012 --indicator KDJ')
         return
 
-    # 确定配置来源
-    if args.plan and args.plan in BACKTEST_PLANS:
-        cfg_dict = BACKTEST_PLANS[args.plan].copy()
-        print(f'使用预置方案: {args.plan}')
-    elif args.plan and args.plan not in BACKTEST_PLANS:
-        print(f'错误: 未找到预置方案 "{args.plan}"，使用 --list-plans 查看')
+    # 校验必填参数
+    if not args.stocks:
+        print('错误: 请指定股票代码（--stocks）')
+        print('示例: python run_backtest.py --stocks 000012,000014 --indicator KDJ')
         sys.exit(1)
-    else:
-        cfg_dict = DEFAULT_CONFIG.copy()
-        print(f'使用默认配置')
 
-    # CLI 参数覆盖
-    if args.stocks:
-        cfg_dict['stock_codes'] = [s.strip() for s in args.stocks.split(',')]
+    # 构建配置
+    cfg = DEFAULT_CONFIG.copy()
+
+    # 股票和时间
+    cfg['stock_codes'] = [s.strip() for s in args.stocks.split(',')]
     if args.start:
-        cfg_dict['start_date'] = args.start
+        cfg['start_date'] = args.start
     if args.end:
-        cfg_dict['end_date'] = args.end
-    if args.signal:
-        cfg_dict['signal_name'] = args.signal
-    if args.benchmark:
-        cfg_dict['benchmark_code'] = args.benchmark
-    if args.money is not None:
-        cfg_dict['initial_money_per_stock'] = args.money
-    if args.slippage is not None:
-        cfg_dict['slippage'] = args.slippage
-    if args.commission is not None:
-        cfg_dict['commission_rate'] = args.commission
-    if args.tax is not None:
-        cfg_dict['tax_rate'] = args.tax
-    if args.position is not None:
-        cfg_dict['position_pct'] = args.position
-    if args.stop_loss is not None:
-        cfg_dict['stop_loss_pct'] = args.stop_loss
-    if args.stop_profit is not None:
-        cfg_dict['stop_profit_pct'] = args.stop_profit
-    if args.drawdown is not None:
-        cfg_dict['drawdown_pct'] = args.drawdown
+        cfg['end_date'] = args.end
 
-    # 策略参数覆盖
-    signal_params = cfg_dict.get('signal_params', {}).copy()
-    if args.n is not None:
-        signal_params['n'] = args.n
-    if args.fast is not None:
-        signal_params['fast'] = args.fast
-    if args.slow is not None:
-        signal_params['slow'] = args.slow
-    # GF 指标参数
-    if args.indicator:
-        signal_params['indicator'] = args.indicator.upper()
+    # 指标名称
+    cfg['indicator'] = args.indicator.upper()
+
+    # 指标参数覆盖
+    for pname in ['n', 'n1', 'n2', 'n3', 'm']:
+        pval = getattr(args, pname, None)
+        if pval is not None:
+            cfg[f'signal_params_{pname}'] = pval
+
+    # 资金参数覆盖
+    if args.money is not None:
+        cfg['initial_money_per_stock'] = args.money
+    if args.slippage is not None:
+        cfg['slippage'] = args.slippage
+    if args.commission is not None:
+        cfg['commission_rate'] = args.commission
+    if args.tax is not None:
+        cfg['tax_rate'] = args.tax
+    if args.position is not None:
+        cfg['position_pct'] = args.position
+
+    # 风控参数覆盖
+    if args.stop_loss is not None:
+        cfg['stop_loss_pct'] = args.stop_loss
+    if args.stop_profit is not None:
+        cfg['stop_profit_pct'] = args.stop_profit
+    if args.drawdown is not None:
+        cfg['drawdown_pct'] = args.drawdown
+
+    # 构建信号参数
+    signal_params = {'indicator': cfg['indicator']}
+    for pname in ['n', 'n1', 'n2', 'n3', 'm']:
+        key = f'signal_params_{pname}'
+        if key in cfg:
+            signal_params[pname] = cfg[key]
 
     # 创建策略
-    strategy = create_signal(cfg_dict['signal_name'], signal_params)
+    strategy = GFSignal(**signal_params)
 
     # 创建配置对象
     config = BacktestConfig(
-        stock_codes=cfg_dict['stock_codes'],
-        start_date=cfg_dict['start_date'],
-        end_date=cfg_dict.get('end_date', ''),
-        benchmark_code=cfg_dict.get('benchmark_code', 'sh.000300'),
-        initial_money_per_stock=cfg_dict['initial_money_per_stock'],
-        slippage=cfg_dict['slippage'],
-        commission_rate=cfg_dict['commission_rate'],
-        tax_rate=cfg_dict['tax_rate'],
-        position_pct=cfg_dict['position_pct'],
-        risk_free_rate=cfg_dict.get('risk_free_rate', 0.027),
-        stop_loss_pct=cfg_dict['stop_loss_pct'],
-        stop_profit_pct=cfg_dict['stop_profit_pct'],
-        drawdown_pct=cfg_dict['drawdown_pct'],
-        tag=args.tag or f'{strategy.name}_{cfg_dict["start_date"]}',
+        stock_codes=cfg['stock_codes'],
+        start_date=cfg.get('start_date', '2022-01-01'),
+        end_date=cfg.get('end_date', ''),
+        benchmark_code=cfg.get('benchmark_code', 'sh.000300'),
+        initial_money_per_stock=cfg.get('initial_money_per_stock', 10000),
+        slippage=cfg.get('slippage', 0.003),
+        commission_rate=cfg.get('commission_rate', 0.0005),
+        tax_rate=cfg.get('tax_rate', 0.001),
+        position_pct=cfg.get('position_pct', 0.95),
+        risk_free_rate=cfg.get('risk_free_rate', 0.027),
+        stop_loss_pct=cfg.get('stop_loss_pct', 0.05),
+        stop_profit_pct=cfg.get('stop_profit_pct', 0.20),
+        drawdown_pct=cfg.get('drawdown_pct', 0.03),
+        tag=args.tag or f'{strategy._indicator}_{cfg["start_date"]}',
     )
 
     # 执行回测
     engine = BacktestEngine(config)
     engine.register_signal(strategy)
-    metrics = engine.run()
-
-    return metrics
+    engine.run()
 
 
 if __name__ == '__main__':

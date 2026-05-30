@@ -1,19 +1,10 @@
 """
 002_self_backtest_reborn — 信号策略包
 
-每个策略继承 core.signal_engine.BaseSignal，只需实现 compute(data) 方法。
+全部技术指标统一从 GF 综合策略导入（gf.py + gf_factors.py）。
+独立信号模块已整合进 GF，不再单独维护。
 """
 
-from .kama import KAMASignal
-from .macd_cdtd import MACDCDTDSignal
-from .arbr import ARBRSignal
-from .boll_dkbl import BOLLDKBLSignal
-from .boll_tdcs import BOLLTDCSignal
+from .gf import GFSignal
 
-__all__ = [
-    'KAMASignal',
-    'MACDCDTDSignal',
-    'ARBRSignal',
-    'BOLLDKBLSignal',
-    'BOLLTDCSignal',
-]
+__all__ = ['GFSignal']

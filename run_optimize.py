@@ -3,14 +3,14 @@
 run_optimize.py — 参数优化网格搜索
 
 用法:
-  # KAMA 策略参数优化
-  python run_optimize.py --strategy KAMA --objective sharpe_ratio
+  # 优化 KDJ 参数（以夏普比率为目标）
+  python run_optimize.py --indicator KDJ
 
-  # 指定参数范围
-  python run_optimize.py --strategy KAMA --param-ranges '{"n": [5,10,15,20], "fast": [2,3], "slow": [20,25,30,35]}'
+  # 优化 MACD 参数
+  python run_optimize.py --indicator MACD --objective calmar_ratio
 
-  # 指定目标函数
-  python run_optimize.py --strategy KAMA --objective calmar_ratio --top-k 10
+  # 自定义参数范围和股票
+  python run_optimize.py --indicator KDJ --param-ranges '{"N": [30, 40, 50]}'
 """
 
 import argparse
@@ -22,105 +22,105 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.engine import BacktestConfig
 from core.optimizer import ParameterOptimizer
+from signals.gf import GFSignal
 from config.backtest_config import DEFAULT_CONFIG
-from run_backtest import SIGNAL_FACTORY, create_signal
 
 
-# 预置参数网格
+# 预置参数网格（每个指标的可优化参数范围）
 PRESET_GRIDS = {
-    'KAMA': {
-        'n': [5, 10, 15, 20, 30],
-        'fast': [2, 3],
-        'slow': [20, 25, 30, 35, 40],
-    },
-    'MACD_CDTD': {
-        'fast_period': [10, 12, 14],
-        'slow_period': [24, 26, 30],
-        'signal_period': [7, 9, 12],
-    },
-    'ARBR': {
-        'period': [20, 26, 30],
-        'ar_threshold': [130, 150, 170],
-        'br_threshold': [40, 50, 60],
-    },
-    'BOLL_DKBL': {
-        'period': [15, 20, 25, 30],
-        'std_multiplier': [1.8, 2.0, 2.2],
-        'volume_ratio': [1.3, 1.5, 1.8],
-    },
-    'BOLL_TDCS': {
-        'period': [15, 20, 25, 30],
-        'std_multiplier': [1.8, 2.0, 2.2],
-    },
+    'KDJ':     {'N': [20, 30, 40, 50, 60]},
+    'MACD':   {'N1': [10, 12, 14], 'N2': [24, 26, 30], 'N3': [7, 9, 12]},
+    'RSI':    {'N': [10, 14, 20, 24, 30]},
+    'CCI':    {'N': [10, 14, 20, 30]},
+    'WR':     {'N': [6, 10, 14, 20]},
+    'ROC':    {'N': [60, 80, 100, 120]},
+    'MTM':    {'N': [30, 40, 60, 80]},
+    'OBV':    {'N1': [5, 10, 15], 'N2': [20, 30, 40]},
+    'BIAS':   {'N': [3, 6, 10]},
+    'DPO':    {'N': [10, 15, 20, 25]},
+    'KAMA':   {'N': [5, 10, 15], 'N1': [2, 3], 'N2': [20, 25, 30]},
+    'TMA':    {'N': [10, 15, 20, 25, 30]},
+    'TYP':    {'N1': [5, 10, 15], 'N2': [20, 30, 40]},
+    'APZ':    {'N': [5, 10, 15], 'M': [15, 20, 25]},
+    'VWAP':   {'N': [10, 15, 20, 25, 30]},
+    'VR':     {'N': [20, 30, 40, 50, 60]},
+    'ATR':    {'N': [10, 14, 20]},
+    'CMF':    {'N': [10, 15, 20, 25]},
+    'EMV':    {'N': [10, 14, 20, 30]},
+    'FI':     {'N': [9, 13, 20]},
+    'PVO':    {'N1': [10, 12, 14], 'N2': [22, 26, 30]},
 }
 
 
 def main():
     parser = argparse.ArgumentParser(description='参数优化网格搜索')
-    parser.add_argument('--strategy', type=str, default='KAMA',
-                        help='信号策略名称')
+    parser.add_argument('--indicator', type=str, default='KDJ',
+                        help='要优化的指标名称，默认 KDJ')
     parser.add_argument('--objective', type=str, default='sharpe_ratio',
                         choices=['total_return', 'annualized_return',
                                  'sharpe_ratio', 'sortino_ratio',
                                  'calmar_ratio', 'win_rate', 'profit_factor'],
-                        help='优化目标')
+                        help='优化目标，默认 sharpe_ratio（夏普比率）')
     parser.add_argument('--param-ranges', type=str, default='',
-                        help='自定义参数范围 JSON，如 \'{"n":[5,10]}\'')
+                        help='自定义参数范围 JSON，如 \'{"N":[30,40,50]}\'')
     parser.add_argument('--stocks', type=str, default='',
                         help='股票代码')
     parser.add_argument('--start', type=str, default='',
                         help='开始日期')
     parser.add_argument('--top-k', type=int, default=5,
-                        help='输出最佳组合数')
+                        help='输出最佳组合数，默认5')
     parser.add_argument('--list-grids', action='store_true',
                         help='列出所有预置参数网格')
     args = parser.parse_args()
 
     if args.list_grids:
         print('\n预置参数网格:')
-        for name, grid in PRESET_GRIDS.items():
+        for name, grid in sorted(PRESET_GRIDS.items()):
             print(f'  {name}:')
             for param, vals in grid.items():
                 print(f'    {param}: {vals}')
         print()
         return
 
-    if args.strategy not in SIGNAL_FACTORY:
-        print(f'错误: 未知策略 "{args.strategy}"')
-        print(f'可选: {list(SIGNAL_FACTORY.keys())}')
+    indicator = args.indicator.upper()
+
+    # 验证指标名
+    if indicator not in GFSignal.INDICATORS:
+        print(f'错误: 未知指标 "{indicator}"')
+        print(f'可用指标共 {len(GFSignal.INDICATORS)} 个，使用 --list-grids 查看预置网格')
         sys.exit(1)
 
     # 确定参数网格
     if args.param_ranges:
         param_grid = json.loads(args.param_ranges)
     else:
-        param_grid = PRESET_GRIDS.get(args.strategy)
+        param_grid = PRESET_GRIDS.get(indicator)
         if param_grid is None:
-            print(f'错误: 策略 "{args.strategy}" 没有预置参数网格')
-            print('请通过 --param-ranges 指定参数范围')
+            print(f'错误: 指标 "{indicator}" 没有预置参数网格')
+            print('请通过 --param-ranges 自行指定参数范围')
             sys.exit(1)
 
     # 基础配置
-    cfg_dict = DEFAULT_CONFIG.copy()
+    cfg = DEFAULT_CONFIG.copy()
     if args.stocks:
-        cfg_dict['stock_codes'] = [s.strip() for s in args.stocks.split(',')]
+        cfg['stock_codes'] = [s.strip() for s in args.stocks.split(',')]
     if args.start:
-        cfg_dict['start_date'] = args.start
+        cfg['start_date'] = args.start
 
     config = BacktestConfig(
-        stock_codes=cfg_dict['stock_codes'],
-        start_date=cfg_dict['start_date'],
-        end_date=cfg_dict.get('end_date', ''),
-        benchmark_code=cfg_dict.get('benchmark_code', 'sh.000300'),
-        initial_money_per_stock=cfg_dict['initial_money_per_stock'],
-        slippage=cfg_dict['slippage'],
-        commission_rate=cfg_dict['commission_rate'],
-        tax_rate=cfg_dict['tax_rate'],
-        position_pct=cfg_dict['position_pct'],
-        risk_free_rate=cfg_dict.get('risk_free_rate', 0.027),
-        stop_loss_pct=cfg_dict['stop_loss_pct'],
-        stop_profit_pct=cfg_dict['stop_profit_pct'],
-        drawdown_pct=cfg_dict['drawdown_pct'],
+        stock_codes=cfg['stock_codes'],
+        start_date=cfg['start_date'],
+        end_date=cfg.get('end_date', ''),
+        benchmark_code='sh.000300',
+        initial_money_per_stock=cfg.get('initial_money_per_stock', 10000),
+        slippage=cfg.get('slippage', 0.003),
+        commission_rate=cfg.get('commission_rate', 0.0005),
+        tax_rate=cfg.get('tax_rate', 0.001),
+        position_pct=cfg.get('position_pct', 0.95),
+        risk_free_rate=cfg.get('risk_free_rate', 0.027),
+        stop_loss_pct=cfg.get('stop_loss_pct', 0.05),
+        stop_profit_pct=cfg.get('stop_profit_pct', 0.20),
+        drawdown_pct=cfg.get('drawdown_pct', 0.03),
     )
 
     # 执行优化
@@ -128,7 +128,7 @@ def main():
     optimizer = ParameterOptimizer(output_dir)
 
     optimizer.grid_search(
-        signal_class=SIGNAL_FACTORY[args.strategy],
+        signal_class=GFSignal,
         param_grid=param_grid,
         base_config=config,
         objective=args.objective,

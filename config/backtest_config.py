@@ -1,142 +1,94 @@
 """
 回测配置中心
 
-所有可配置项集中在此，方便批量管理回测方案。
-使用方式：直接修改本文件中的配置字典，或通过 CLI 参数覆盖。
+本文件定义了所有可配置项的默认值。你可以：
+1. 直接修改本文件中的 DEFAULT_CONFIG 字典
+2. 在命令行通过参数覆盖（如 --money 50000 --stop-loss 0.03）
+
+==================================================
+【必填参数】每次运行都必须指定的参数
+==================================================
+  stock_codes    股票代码列表，如 ['000012', '000014']
+  start_date     回测开始日期，如 '2022-01-01'
+  end_date       回测结束日期，空字符串表示到最新数据
+
+==================================================
+【必填参数：指标选择】
+==================================================
+  indicator      技术指标名称（大写）。可选值（共 97 个）：
+
+  --- 价格动量指标（表34）---
+  DPO, ER, TII, PO, MA_DISPLACED, T3, POS, PAC, ADTM,
+  ZLMACD, TMA, TYP, KDJD, VMA, BIAS, WMA_M, DDI, HMA,
+  SROC, EXPMA, DC, VIDYA, QSTICK, FB, DEMA, APZ, ASI,
+  ARRON, KC, MTM, CR, BOP, HULLMA, COPP, ENV, RSIH,
+  HLMA, TSI, BIAS36, UOS, DZRSI, DZCCI, CMF, PPO, RWI,
+  ATR, WAD, KST, VI, DMA_I, MICD, PMO, RCCD, KAMA, AWS,
+  ARBR, ADXR, SMI, SI, DO, DBCD, CV
+
+  --- 价格反转指标（表35）---
+  KDJ, RMI, SKDJ, CCI, RSI, ROC, WR, STC, RVI, RSIS
+
+  --- 成交量指标（表36）---
+  MAAMT, SROCVOL, PVO, BIASVOL, MACDVOL, ROCVOL
+
+  --- 价量指标（表37）---
+  VWAP, FI, NVI, PVT, RSIV, AMV, VRAMT, WVAD, OBV,
+  PVI, TMF, MFI, ADOSC, VAO, VR, KO, EMV
+
+  --- 混合指标 ---
+  MACD
+
+==================================================
+【可选参数：交易成本】（有默认值，可按需修改）
+==================================================
+  initial_money_per_stock  每只股票初始资金（元），默认 10000
+  slippage                 滑点（买入上浮、卖出入下的比例），默认 0.003（0.3%）
+  commission_rate          佣金比例，默认 0.0005（万分之五，最低5元）
+  tax_rate                 印花税比例（卖出时收取），默认 0.001（千分之一）
+  position_pct             每笔交易仓位比例，默认 0.95（95%）
+
+==================================================
+【可选参数：风控】（有默认值，可按需修改）
+==================================================
+  stop_loss_pct    止损比例，默认 0.05（5%）
+                   触发条件：开盘价 < 买入价 × (1 - stop_loss_pct)
+  stop_profit_pct  止盈触发比例，默认 0.20（20%）
+                   触发条件：持仓期间最高价 >= 买入价 × (1 + stop_profit_pct)
+  drawdown_pct     从最高点回落止盈比例，默认 0.03（3%）
+                   触发条件：止盈激活后，开盘价 < 最高价 × (1 - drawdown_pct)
+
+==================================================
+【可选参数：其他】
+==================================================
+  benchmark_code   基准指数代码，默认 'sh.000300'（沪深300）
+  risk_free_rate   无风险利率，默认 0.027（2.7%，用于夏普比率计算）
 """
 
-from typing import Dict, List
-
 # ============================================================================
-# 常用股票池
+# 默认配置（可直接修改本字典）
 # ============================================================================
 
-STOCK_POOLS: Dict[str, List[str]] = {
-    'demo': [
-        '000012', '000014', '000016', '000050',
-        '000055', '000062', '000070',
-    ],
-    'sz50_sample': [
-        '000001', '000002', '000004', '000006', '000008',
-        '000009', '000010', '000011', '000012', '000016',
-    ],
-    'hs300_sample': [
-        '000001', '000002', '000006', '000008', '000012',
-        '000016', '000021', '000025', '000027', '000028',
-        '000030', '000031', '000034', '000035', '000036',
-        '000039', '000040', '000046', '000049', '000050',
-    ],
+DEFAULT_CONFIG = {
+    # ==== 必填（运行前请修改）====
+    'stock_codes': ['000012', '000014'],    # 股票代码列表（6位数字，多只逗号分隔）
+    'start_date': '2022-01-01',             # 回测开始日期
+    'end_date': '',                         # 回测结束日期（空=到最新）
+    'indicator': 'KDJ',                     # 技术指标名称（大写，详见上方列表）
+
+    # ==== 交易成本 ====
+    'initial_money_per_stock': 10000,       # 每只股票初始资金（单位：元）
+    'slippage': 0.003,                      # 滑点（0.003 = 0.3%）
+    'commission_rate': 5.0 / 10000,         # 佣金比例（万分之五）
+    'tax_rate': 1.0 / 1000,                 # 印花税比例（千分之一）
+    'position_pct': 0.95,                   # 仓位比例（95%）
+
+    # ==== 风控参数 ====
+    'stop_loss_pct': 0.05,                  # 止损比例（5%）
+    'stop_profit_pct': 0.20,                # 止盈触发比例（20%）
+    'drawdown_pct': 0.03,                   # 回落止盈比例（3%）
+
+    # ==== 其他 ====
+    'benchmark_code': 'sh.000300',          # 基准指数（沪深300）
+    'risk_free_rate': 0.027,                # 无风险利率（2.7%）
 }
-
-# ============================================================================
-# 预置回测方案
-# ============================================================================
-
-BACKTEST_PLANS: Dict[str, Dict] = {
-    # ---- KAMA 策略 ----
-    'kama_demo': {
-        'stock_codes': STOCK_POOLS['demo'],
-        'start_date': '2022-01-01',
-        'end_date': '',
-        'benchmark_code': 'sh.000300',
-        'signal_name': 'KAMA',
-        'signal_params': {'n': 10, 'fast': 2, 'slow': 30},
-        # 资金参数
-        'initial_money_per_stock': 10000,
-        'slippage': 0.003,
-        'commission_rate': 5.0 / 10000,
-        'tax_rate': 1.0 / 1000,
-        'position_pct': 0.95,
-        'risk_free_rate': 0.027,
-        # 风控
-        'stop_loss_pct': 0.05,
-        'stop_profit_pct': 0.20,
-        'drawdown_pct': 0.03,
-    },
-
-    # ---- KAMA 沪深300样本 ----
-    'kama_hs300': {
-        'stock_codes': STOCK_POOLS['hs300_sample'],
-        'start_date': '2020-01-01',
-        'end_date': '',
-        'benchmark_code': 'sh.000300',
-        'signal_name': 'KAMA',
-        'signal_params': {'n': 10, 'fast': 2, 'slow': 30},
-        'initial_money_per_stock': 10000,
-        'slippage': 0.003,
-        'commission_rate': 5.0 / 10000,
-        'tax_rate': 1.0 / 1000,
-        'position_pct': 0.95,
-        'risk_free_rate': 0.027,
-        'stop_loss_pct': 0.05,
-        'stop_profit_pct': 0.20,
-        'drawdown_pct': 0.03,
-    },
-
-    # ---- KAMA 严格止盈 ----
-    'kama_tight_stop': {
-        'stock_codes': STOCK_POOLS['demo'],
-        'start_date': '2022-01-01',
-        'end_date': '',
-        'benchmark_code': 'sh.000300',
-        'signal_name': 'KAMA',
-        'signal_params': {'n': 10, 'fast': 2, 'slow': 30},
-        'initial_money_per_stock': 10000,
-        'slippage': 0.003,
-        'commission_rate': 5.0 / 10000,
-        'tax_rate': 1.0 / 1000,
-        'position_pct': 0.95,
-        'risk_free_rate': 0.027,
-        'stop_loss_pct': 0.03,    # 3%止损
-        'stop_profit_pct': 0.10,  # 10%止盈
-        'drawdown_pct': 0.02,     # 2%回落
-    },
-
-    # ---- BOLL_DKBL 带宽收口策略 ----
-    'boll_dkbl_demo': {
-        'stock_codes': STOCK_POOLS['demo'],
-        'start_date': '2022-01-01',
-        'end_date': '',
-        'benchmark_code': 'sh.000300',
-        'signal_name': 'BOLL_DKBL',
-        'signal_params': {'period': 20, 'std_multiplier': 2.0, 'volume_ratio': 1.5},
-        'initial_money_per_stock': 10000,
-        'slippage': 0.003,
-        'commission_rate': 5.0 / 10000,
-        'tax_rate': 1.0 / 1000,
-        'position_pct': 0.95,
-        'risk_free_rate': 0.027,
-        'stop_loss_pct': 0.05,
-        'stop_profit_pct': 0.20,
-        'drawdown_pct': 0.03,
-    },
-
-    # ---- BOLL_TDCS 布林参数调优策略 ----
-    'boll_tdcs_demo': {
-        'stock_codes': STOCK_POOLS['demo'],
-        'start_date': '2022-01-01',
-        'end_date': '',
-        'benchmark_code': 'sh.000300',
-        'signal_name': 'BOLL_TDCS',
-        'signal_params': {'period': 20, 'std_multiplier': 2.0, 'use_all_signals': True},
-        'initial_money_per_stock': 10000,
-        'slippage': 0.003,
-        'commission_rate': 5.0 / 10000,
-        'tax_rate': 1.0 / 1000,
-        'position_pct': 0.95,
-        'risk_free_rate': 0.027,
-        'stop_loss_pct': 0.05,
-        'stop_profit_pct': 0.20,
-        'drawdown_pct': 0.03,
-    },
-}
-
-# ============================================================================
-# 默认配置
-# ============================================================================
-
-# ============================================================================
-# 默认配置
-# ============================================================================
-
-DEFAULT_CONFIG = BACKTEST_PLANS['kama_demo']

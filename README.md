@@ -63,11 +63,11 @@ def main():
 # 1. 进到项目目录
 cd /public/home/hpc/zhulei/superman/quant/code/002_self_backtest_reborn
 
-# 2. 查看有哪些预置回测方案
-python run_backtest.py --list-plans
+# 2. 查看所有可用的技术指标（97个）
+python run_backtest.py --list-indicators
 
-# 3. 运行一个回测（KAMA策略 + 7只demo股票）
-python run_backtest.py --plan kama_demo
+# 3. 运行一个回测（KDJ指标 + 单只股票）
+python run_backtest.py --stocks 000012 --indicator KDJ
 
 # 4. 看结果
 ls output/    # CSV报告 + PNG图表都在这里
@@ -145,14 +145,9 @@ ls output/    # CSV报告 + PNG图表都在这里
 │   ├── comparator.py               ←   多策略对比
 │   └── optimizer.py                ←   参数优化
 │
-├── signals/                        ← 📦 策略库（每个策略一个文件）
-│   ├── kama.py                     ←   KAMA 自适应均线策略
-│   ├── macd_cdtd.py                ←   MACD 顶底背离策略
-│   ├── arbr.py                     ←   ARBR 情绪指标策略
-│   ├── boll_dkbl.py                ←   布林带带宽收口策略
-│   ├── boll_tdcs.py                ←   布林带参数调优策略
-│   ├── gf.py                       ←   🆕 GF 综合指标（97个技术指标统一入口）
-│   └── gf_factors.py               ←   🆕 GF 指标计算库（143个函数）
+├── signals/                        ← 📦 GF 综合指标策略库
+│   ├── gf.py                       ←   GF 综合策略类（唯一策略入口，97个指标）
+│   └── gf_factors.py               ←   GF 指标计算库（143个计算函数）
 │
 ├── .claude/                        ← 🤖 Claude Code 配置（不需要你管）
 │
@@ -177,61 +172,64 @@ ls output/    # CSV报告 + PNG图表都在这里
 
 ### 1. 运行回测
 
-#### 1.1 查看有哪些预置方案
+#### 1.1 查看所有可用的技术指标
 
 ```bash
-python run_backtest.py --list-plans
+python run_backtest.py --list-indicators
 
-# 输出示例：
-#   预置回测方案:
-#   ==================================================
-#   kama_demo            | KAMA | 7 只 | 2022-01-01
-#   kama_hs300           | KAMA | 20 只 | 2020-01-01
-#   kama_tight_stop      | KAMA | 7 只 | 2022-01-01
-#   boll_dkbl_demo       | BOLL_DKBL | 7 只 | 2022-01-01
-#   boll_tdcs_demo       | BOLL_TDCS | 7 只 | 2022-01-01
-#
-#   🆕 GF 系列没有预置方案，使用方式见下方 1.7
+# 输出共 97 个指标，按分类显示：
+#   【价格动量指标（表34）】
+#     DPO  ER  TII  PO  MA_DISPLACED ...
+#   【价格反转指标（表35）】
+#     KDJ  RMI  SKDJ  CCI  RSI ...
+#   【成交量指标（表36）】
+#     MAAMT  SROCVOL  PVO ...
+#   【价量指标（表37）】
+#     VWAP  FI  NVI  PVT ...
 ```
 
-每个方案包含：
-- **策略**（如 KAMA、BOLL_DKBL）
-- **股票池**（几只股票）
-- **时间范围**
+#### 1.2 最简运行方式
 
-#### 1.2 使用预置方案
+只需要指定**股票代码 + 指标名称**即可运行：
 
 ```bash
-# 最简单的运行方式
-python run_backtest.py --plan kama_demo
+# KDJ 指标
+python run_backtest.py --stocks 000012 --indicator KDJ
 
-# 或者用BOLL策略
-python run_backtest.py --plan boll_dkbl_demo
+# MACD 指标
+python run_backtest.py --stocks 000012,000014 --indicator MACD
+
+# RSI 指标
+python run_backtest.py --stocks 000012 --indicator RSI
 ```
 
 #### 1.3 自定义回测参数
 
 ```bash
-# 自己指定股票、时间、策略
 python run_backtest.py \
     --stocks 000012,000014,000016 \    # 股票代码，逗号分隔
     --start 2022-01-01 \                # 开始日期
     --end 2024-12-31 \                  # 结束日期（不填则到最新）
-    --signal KAMA \                     # 策略名称（见 --list-plans）
+    --indicator MACD \                  # 指标名称（大写）
     --tag my_first_backtest             # 你的标记（用于输出文件名）
 ```
 
 #### 1.4 调整策略参数
 
 ```bash
-# KAMA 策略有3个参数：n（周期）, fast（快线）, slow（慢线）
+# 以 KDJ 为例，参数 N = 计算周期（默认40）
 python run_backtest.py \
     --stocks 000012 \
-    --start 2022-01-01 \
-    --signal KAMA \
-    --n 15 \          # 默认10，改大更平滑
-    --fast 3 \        # 默认2
-    --slow 40         # 默认30
+    --indicator KDJ \
+    --n 30            # 改小更灵敏，改大更平滑
+
+# 以 MACD 为例，参数 N1(快线), N2(慢线), N3(信号线)
+python run_backtest.py \
+    --stocks 000012 \
+    --indicator MACD \
+    --n1 10 \         # 快线EMA周期（默认12）
+    --n2 24 \         # 慢线EMA周期（默认26）
+    --n3 7            # 信号线EMA周期（默认9）
 ```
 
 #### 1.5 调整风控参数
@@ -257,39 +255,18 @@ python run_backtest.py \
     --tax 0.0005           # 印花税万分之五（默认千分之一）
 ```
 
-#### 1.7 🆕 使用 GF 综合指标（97个技术指标）
+#### 1.7 查看指标的详细参数
 
-框架集成了 **GF 指标公式库**（移植自 `002_self_backtest/GF_factors.py` + `GF_buy_sell_signal.py`），
-包含 **97 个技术指标**的统一入口。通过 `--indicator` 参数选择具体指标：
+所有指标的默认参数在 `config/backtest_config.py` 中有完整注释。
+你也可以在运行时通过 `--n`、`--n1`、`--n2`、`--n3`、`--m` 覆盖：
 
 ```bash
-# 使用 KDJ 指标回测
-python run_backtest.py --signal GF --stocks 000012 --indicator KDJ
-
-# 使用 MACD 指标回测
-python run_backtest.py --signal GF --stocks 000012 --indicator MACD
-
-# 使用 RSI 指标 + 自定义周期
-python run_backtest.py --signal GF --stocks 000012 --indicator RSI --n 14
+python run_backtest.py --stocks 000012 --indicator KDJ --n 50
+python run_backtest.py --stocks 000012 --indicator MACD --n1 10 --n2 24 --n3 7
 ```
 
-**常用 GF 指标速查表：**
-
-| 分类 | 指标名 | 说明 |
-|------|--------|------|
-| 价格动量 | KDJ | 随机指标 |
-| 价格动量 | MACD | 指数平滑异同平均 |
-| 价格动量 | RSI | 相对强弱指数 |
-| 价格动量 | CCI | 商品通道指数 |
-| 价格动量 | WR | 威廉指标 |
-| 价格动量 | BIAS | 乖离率 |
-| 成交量 | OBV | 能量潮 |
-| 成交量 | MFI | 资金流量指数 |
-| 价量 | VWAP | 成交量加权平均价 |
-| 价量 | VR | 成交量变异率 |
-
-> 💡 **小提示**：GF 策略也可以加入多策略对比：
-> `python run_compare.py --strategies KAMA,GF-KDJ --stocks 000012`
+> 💡 **提示**：全部 97 个指标的统一入口是 `GF` 策略，但命令中只需写 `--indicator 指标名`，
+> 框架自动使用 GF 策略查找指标。
 
 #### 回测完成后你会看到什么？
 
@@ -602,22 +579,20 @@ python run_compare.py --strategies KAMA,MY_STRATEGY
 | `--stop-profit <值>` | 止盈比例 | `--stop-profit 0.15`（默认20%） |
 | `--drawdown <值>` | 回落止盈比例 | `--drawdown 0.02`（默认3%） |
 
-### 策略参数（策略特有）
+### 策略参数（通用）
 
-| 策略 | 参数 | 说明 | 默认值 |
-|------|------|------|--------|
-| KAMA | `--n` | 效率比率周期 | 10 |
-| KAMA | `--fast` | 快线参数 | 2 |
-| KAMA | `--slow` | 慢线参数 | 30 |
-| MACD_CDTD | `--fast-period` | 快线周期 | 12 |
-| MACD_CDTD | `--slow-period` | 慢线周期 | 26 |
-| MACD_CDTD | `--signal-period` | 信号线周期 | 9 |
-| ARBR | `--period` | 计算周期 | 26 |
-| ARBR | `--ar-threshold` | AR阈值 | 150 |
-| ARBR | `--br-threshold` | BR阈值 | 50 |
-| BOLL_DKBL | `--period` | 布林周期 | 20 |
-| BOLL_DKBL | `--std-multiplier` | 标准差倍数 | 2.0 |
-| BOLL_DKBL | `--volume-ratio` | 成交量放大倍率 | 1.5 |
+框架使用 GF 综合策略（唯一策略），通过 `--indicator` 选择具体指标。
+通用参数覆盖（不同指标含义不同）：
+
+| 参数 | 说明 | 适用指标示例 |
+|------|------|-------------|
+| `--n` | 主周期参数 | KDJ(N), RSI(N), CCI(N), WR(N) |
+| `--n1` | 参数1 | MACD(N1=快线), OBV(N1) |
+| `--n2` | 参数2 | MACD(N2=慢线), OBV(N2) |
+| `--n3` | 参数3 | MACD(N3=信号线) |
+| `--m` | 辅助周期 | KDJ(M), SKDJ(M) |
+
+每个指标的默认参数见 `config/backtest_config.py` 或 `signals/gf.py` 中的 `_DEFAULT_PARAMS`。
 
 ### 对比命令
 
