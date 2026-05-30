@@ -17,6 +17,10 @@ import matplotlib.font_manager as fm
 import numpy as np
 import pandas as pd
 
+from .log_utils import get_logger
+
+logger = get_logger(__name__)
+
 from .engine import BacktestConfig, BacktestEngine
 from .metrics import BacktestMetrics
 from .signal_engine import BaseSignal
@@ -100,11 +104,6 @@ class StrategyComparator:
                 config: BacktestConfig) -> 'StrategyComparator':
         """
         批量对比多个策略。
-
-        Parameters
-        ----------
-        strategies : list of (name, signal)
-        config : BacktestConfig
         """
         for name, signal in strategies:
             self.add_strategy(name, signal, config)
@@ -151,34 +150,90 @@ class StrategyComparator:
     # ------------------------------------------------------------------
 
     def _plot_comparison(self, ts: str):
-        """绘制多策略收益率曲线对比"""
-        fig, ax = plt.subplots(figsize=(16, 7))
+        """绘制多策略对比图（收益率曲线 + 雷达图）"""
+        n_strategies = len(self._results)
+        if n_strategies == 0:
+            return
 
         colors = ['#2E86AB', '#A23B72', '#F18F01', '#5D576B',
                   '#4ECDC4', '#FF6B6B', '#45B7D1', '#96CEB4']
         markers = ['-', '--', '-.', ':', (0, (3, 1, 1, 1)),
                    (0, (5, 2)), (0, (1, 1)), (0, (3, 1, 1, 1, 1, 1))]
 
-        for idx, result in enumerate(self._results):
-            curve = result.account_curve['equity_cumulative_returns'] - 1
-            color = colors[idx % len(colors)]
-            style = markers[idx % len(markers)]
-            ax.plot(curve, label=result.name, color=color,
-                    linestyle=style, linewidth=1.8, alpha=0.85)
+        if n_strategies <= 9:
+            # ---- 双图布局：曲线 + 雷达 ----
+            fig = plt.figure(figsize=(20, 8))
 
-        ax.set_title('多策略累积收益率对比', fontsize=14, fontweight='bold')
-        ax.set_xlabel('交易日')
-        ax.set_ylabel('累积收益率')
-        ax.axhline(y=0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
-        ax.grid(axis='y', linestyle='--', alpha=0.4)
-        ax.legend(fontsize=10, loc='upper left',
-                  bbox_to_anchor=(1.01, 1), borderaxespad=0)
+            ax1 = fig.add_subplot(1, 2, 1)
+            for idx, result in enumerate(self._results):
+                curve = result.account_curve['equity_cumulative_returns'] - 1
+                color = colors[idx % len(colors)]
+                style = markers[idx % len(markers)]
+                ax1.plot(curve, label=result.name, color=color,
+                         linestyle=style, linewidth=1.8, alpha=0.85)
+            ax1.set_title('多策略累积收益率对比', fontsize=14, fontweight='bold')
+            ax1.set_xlabel('交易日')
+            ax1.set_ylabel('累积收益率')
+            ax1.axhline(y=0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+            ax1.grid(axis='y', linestyle='--', alpha=0.4)
+            ax1.legend(fontsize=8, loc='upper left',
+                       bbox_to_anchor=(1.01, 1), borderaxespad=0)
 
-        plt.tight_layout()
-        path = os.path.join(self.output_dir, f'comparison_{ts}.png')
-        fig.savefig(path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
-        print(f'  📊 对比曲线图 → {path}')
+            # 雷达图
+            ax2 = fig.add_subplot(1, 2, 2, projection='polar')
+            radar_metrics = ['sharpe_ratio', 'sortino_ratio', 'calmar_ratio',
+                             'win_rate', 'profit_factor']
+            radar_labels = ['夏普', 'Sortino', 'Calmar', '胜率', '盈亏比']
+
+            raw_data = []
+            for result in self._results:
+                d = result.metrics.to_dict()
+                raw_data.append([d.get(m, 0) for m in radar_metrics])
+
+            raw_arr = np.array(raw_data)
+            norms = np.nanmax(np.abs(raw_arr), axis=0)
+            norms = np.where(norms > 0, norms, 1)
+            norm_data = raw_arr / norms
+
+            angles = np.linspace(0, 2 * np.pi, len(radar_labels), endpoint=False).tolist()
+            angles += angles[:1]
+
+            for idx, result in enumerate(self._results):
+                values = norm_data[idx].tolist() + norm_data[idx][:1].tolist()
+                ax2.plot(angles, values, color=colors[idx % len(colors)],
+                         linewidth=1.5, label=result.name, marker='o', markersize=4)
+                ax2.fill(angles, values, alpha=0.1, color=colors[idx % len(colors)])
+
+            ax2.set_xticks(angles[:-1])
+            ax2.set_xticklabels(radar_labels, fontsize=11)
+            ax2.set_title('多策略绩效雷达图', fontsize=14, fontweight='bold', pad=20)
+            ax2.set_yticklabels([])
+            plt.tight_layout()
+            path = os.path.join(self.output_dir, f'comparison_{ts}.png')
+            fig.savefig(path, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+        else:
+            # ---- 单曲线图 ----
+            fig, ax = plt.subplots(figsize=(16, 7))
+            for idx, result in enumerate(self._results):
+                curve = result.account_curve['equity_cumulative_returns'] - 1
+                color = colors[idx % len(colors)]
+                style = markers[idx % len(markers)]
+                ax.plot(curve, label=result.name, color=color,
+                        linestyle=style, linewidth=1.8, alpha=0.85)
+            ax.set_title('多策略累积收益率对比', fontsize=14, fontweight='bold')
+            ax.set_xlabel('交易日')
+            ax.set_ylabel('累积收益率')
+            ax.axhline(y=0, color='gray', linestyle='-', linewidth=0.5, alpha=0.5)
+            ax.grid(axis='y', linestyle='--', alpha=0.4)
+            ax.legend(fontsize=9, loc='upper left',
+                      bbox_to_anchor=(1.01, 1), borderaxespad=0)
+            plt.tight_layout()
+            path = os.path.join(self.output_dir, f'comparison_{ts}.png')
+            fig.savefig(path, dpi=150, bbox_inches='tight')
+            plt.close(fig)
+
+        logger.info(f'对比图表 → {path}')
 
     def _setup_matplotlib(self):
         """配置 Matplotlib 中文字体（与 reporter.py 一致的方案）"""

@@ -109,6 +109,25 @@ def parse_args():
                         help='【可选】止盈触发比例，默认0.20（20%%）')
     parser.add_argument('--drawdown', type=float, default=None,
                         help='【可选】从最高点回落止盈比例，默认0.03（3%%）')
+    parser.add_argument('--trailing-stop', type=float, default=None,
+                        help='【可选】移动止损比例（从最高价回落），默认0=不启用。'
+                             '如0.07表示从最高价回撤7%%时卖出')
+    parser.add_argument('--trailing-profit', type=float, default=None,
+                        help='【可选】移动止盈激活涨幅，默认0.15（15%%）。'
+                             '涨幅超过此值后才激活移动止损')
+
+    # 大盘过滤参数
+    parser.add_argument('--index-filter', type=str, default=None,
+                        help='【可选】大盘指数代码，如 hushen300, shangzhengzhishu, '
+                             'zhongzheng500 等。启用后大盘不佳时不开仓')
+    parser.add_argument('--index-ma', type=int, default=None,
+                        help='【可选】大盘均线周期，默认20')
+    parser.add_argument('--index-drop', type=float, default=None,
+                        help='【可选】大盘急跌阈值，默认-0.03（-3%%）')
+
+    # 性能参数
+    parser.add_argument('--workers', type=int, default=None,
+                        help='【可选】并行线程数，默认4。多股票时加速')
 
     return parser.parse_args()
 
@@ -204,6 +223,22 @@ def main():
         cfg['stop_profit_pct'] = args.stop_profit
     if args.drawdown is not None:
         cfg['drawdown_pct'] = args.drawdown
+    if args.trailing_stop is not None:
+        cfg['trailing_stop_pct'] = args.trailing_stop
+    if args.trailing_profit is not None:
+        cfg['trailing_profit_pct'] = args.trailing_profit
+
+    # 大盘过滤参数
+    if args.index_filter is not None:
+        cfg['index_filter_code'] = args.index_filter
+    if args.index_ma is not None:
+        cfg['index_filter_ma'] = args.index_ma
+    if args.index_drop is not None:
+        cfg['index_filter_drop'] = args.index_drop
+
+    # 并行参数
+    if args.workers is not None:
+        cfg['max_workers'] = args.workers
 
     # 构建信号参数
     signal_params = {'indicator': cfg['indicator']}
@@ -230,6 +265,12 @@ def main():
         stop_loss_pct=cfg.get('stop_loss_pct', 0.05),
         stop_profit_pct=cfg.get('stop_profit_pct', 0.20),
         drawdown_pct=cfg.get('drawdown_pct', 0.03),
+        trailing_stop_pct=cfg.get('trailing_stop_pct', 0.0),
+        trailing_profit_pct=cfg.get('trailing_profit_pct', 0.15),
+        index_filter_code=cfg.get('index_filter_code', ''),
+        index_filter_ma=cfg.get('index_filter_ma', 20),
+        index_filter_drop=cfg.get('index_filter_drop', -0.03),
+        max_workers=cfg.get('max_workers', 4),
         tag=args.tag or f'{strategy._indicator}_{cfg["start_date"]}',
     )
 

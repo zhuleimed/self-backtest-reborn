@@ -5,12 +5,15 @@
   作为回测流程的总编排器，将以下模块串联为完整的流水线：
     DataLoader → SignalEngine → RiskManager → EquityCurveCalculator → MetricsCalculator → Reporter
 
-  支持两种运行模式：
-    1. run() — 完整回测流程（从数据到报告）
-    2. run_pipeline() — 逐步执行，每一步可独立调用
+  优化功能：
+    - 并行处理：多股票回测时使用线程池加速
+    - 进度显示：tqdm 进度条
+    - 日志系统：logging 替代 print
+    - 大盘环境过滤：参考指数数据判断是否适合开仓
 """
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Dict, List, Optional, Tuple
@@ -23,6 +26,9 @@ from .risk_manager import RiskManager
 from .equity_curve import BacktestParams, EquityCurveCalculator, TradeRecord
 from .metrics import BacktestMetrics, MetricsCalculator
 from .reporter import Reporter
+from .log_utils import get_logger, console_out
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -33,6 +39,11 @@ class BacktestConfig:
     start_date: str = ''
     end_date: str = ''
     benchmark_code: str = 'sh.000300'  # 沪深300
+
+    # 大盘环境过滤
+    index_filter_code: str = ''         # 大盘指数代码（如 hushen300），空=不启用过滤
+    index_filter_ma: int = 20           # 均线周期
+    index_filter_drop: float = -0.03    # 急跌阈值
 
     # 资金与交易参数
     initial_money_per_stock: float = 10_000.0
@@ -46,13 +57,18 @@ class BacktestConfig:
     stop_loss_pct: float = 0.05
     stop_profit_pct: float = 0.20
     drawdown_pct: float = 0.03
+    trailing_stop_pct: float = 0.0    # 0=不使用移动止损
+    trailing_profit_pct: float = 0.15
 
     # 路径
-    data_dir: Optional[str] = None  # 股票 CSV 目录（None 则自动获取）
+    data_dir: Optional[str] = None
     output_dir: str = ''
 
     # 报告
-    tag: str = ''      # 报告文件前缀
+    tag: str = ''
+
+    # 并行
+    max_workers: int = 4               # 并行回测线程数
 
     def __post_init__(self):
         if not self.output_dir:
@@ -69,7 +85,6 @@ class BacktestEngine:
     def __init__(self, config: BacktestConfig):
         self.config = config
 
-        # 子模块
         self.data_loader = DataLoader(config.data_dir)
         self.signal_engine = SignalEngine()
         self.risk_manager = RiskManager()
@@ -84,9 +99,9 @@ class BacktestEngine:
         self.metrics_calculator = MetricsCalculator(config.risk_free_rate)
         self.reporter = Reporter(config.output_dir)
 
-        # 流水线中间结果缓存
         self._stock_datas: Dict[str, pd.DataFrame] = {}
         self._stock_results: List[Dict] = []
+        self._index_data: Optional[pd.DataFrame] = None
         self._benchmark_data: Optional[pd.DataFrame] = None
         self._account_data: Optional[pd.DataFrame] = None
         self._metrics: Optional[BacktestMetrics] = None
@@ -97,13 +112,11 @@ class BacktestEngine:
 
     def register_signal(self, strategy: BaseSignal,
                          weight: float = 1.0) -> 'BacktestEngine':
-        """注册信号策略"""
         self.signal_engine.register(strategy, weight)
         return self
 
     @property
     def signal_name(self) -> str:
-        """当前注册的策略名称（用于列名）"""
         if self.signal_engine.registered:
             return self.signal_engine.registered[0].name
         return 'strategy'
@@ -112,15 +125,10 @@ class BacktestEngine:
         """
         执行完整回测流水线：
           数据加载 → 信号生成 → 风控 → 资金曲线 → 绩效指标 → 报告
-
-        输出目录层级：
-          output/YYYYMMDD/HHMM/xxx_trade_records.csv
-                ↕日期目录  ↕时间目录  ↕文件
         """
         cfg = self.config
         tag = cfg.tag or self.signal_name
 
-        # 生成日期和时间字符串，创建分层输出目录
         now = datetime.now()
         date_str = now.strftime('%Y%m%d')
         time_str = now.strftime('%H%M')
@@ -129,76 +137,44 @@ class BacktestEngine:
         os.makedirs(output_subdir, exist_ok=True)
         self.reporter.output_dir = output_subdir
 
-        print(f'[回测引擎] 开始回测: {tag}')
-        print(f'  股票池: {len(cfg.stock_codes)} 只')
-        print(f'  时间:   {cfg.start_date} → {cfg.end_date or "最近"}')
-        print(f'  策略:   {self.signal_name}')
-        print(f'  输出:   {output_subdir}')
-        print('-' * 50)
+        console_out(f'')
+        console_out(f'{"=" * 50}')
+        logger.info(f'开始回测: {tag}')
+        logger.info(f'  股票池: {len(cfg.stock_codes)} 只')
+        logger.info(f'  时间:   {cfg.start_date} → {cfg.end_date or "最近"}')
+        logger.info(f'  策略:   {self.signal_name}')
+        logger.info(f'  输出:   {output_subdir}')
+        console_out(f'{"=" * 50}')
 
         # ---- Step 1: 数据加载 ----
-        print('[1/5] 加载数据…')
+        logger.info('[1/5] 加载数据…')
         self._load_stock_data()
         self._load_benchmark_data()
-        print(f'  ✓ 加载 {len(self._stock_datas)} 只股票, 1 个基准指数')
+        self._load_index_data()
+        logger.info(f'  ✓ 加载 {len(self._stock_datas)} 只股票, 1 个基准指数'
+                    f'{", 1 个大盘指数" if self._index_data is not None else ""}')
 
         # ---- Step 2: 信号生成 ----
-        print('[2/5] 生成交易信号…')
+        logger.info('[2/5] 生成交易信号…')
         self._generate_signals()
-        print(f'  ✓ 信号策略: {self.signal_name}')
+        logger.info(f'  ✓ 信号策略: {self.signal_name}')
 
         # ---- Step 3: 风控 ----
-        print('[3/5] 施加风控规则…')
+        logger.info('[3/5] 施加风控规则…')
         self._apply_risk_controls()
 
-        # ---- Step 4: 资金曲线 ----
-        print('[4/5] 计算资金曲线…')
+        # ---- Step 4: 资金曲线（并行）----
+        logger.info('[4/5] 计算资金曲线…')
         self._calculate_equity_curves()
 
         # ---- Step 5: 绩效与报告 ----
-        print('[5/5] 计算绩效 & 生成报告…')
+        logger.info('[5/5] 计算绩效 & 生成报告…')
         self._compute_metrics()
         self._generate_reports(tag, ts)
 
         self.reporter.print_summary(self._metrics)
-        print(f'[回测引擎] 回测完成 ✓')
+        logger.info(f'回测完成 ✓')
         return self._metrics
-
-    # ------------------------------------------------------------------
-    # 流水线步骤（可独立调用）
-    # ------------------------------------------------------------------
-
-    def run_pipeline(self, steps: List[str] = None) -> dict:
-        """
-        逐步执行流水线，steps 可选子集：
-          ['load', 'signal', 'risk', 'equity', 'report']
-
-        Returns
-        -------
-        dict
-            各步骤产物的引用
-        """
-        pipeline = {
-            'load':   (self._load_stock_data, self._load_benchmark_data),
-            'signal': (self._generate_signals,),
-            'risk':   (self._apply_risk_controls,),
-            'equity': (self._calculate_equity_curves,),
-            'report': (self._compute_metrics, self._generate_reports),
-        }
-        if steps is None:
-            steps = list(pipeline.keys())
-
-        for step in steps:
-            for func in pipeline.get(step, []):
-                func()
-
-        return {
-            'stock_datas': self._stock_datas,
-            'benchmark': self._benchmark_data,
-            'stock_results': self._stock_results,
-            'account_data': self._account_data,
-            'metrics': self._metrics,
-        }
 
     # ------------------------------------------------------------------
     # 内部步骤实现
@@ -217,15 +193,39 @@ class BacktestEngine:
             cfg.benchmark_code, cfg.start_date, cfg.end_date,
         )
 
+    def _load_index_data(self):
+        """加载大盘指数数据（用于市场环境过滤）"""
+        cfg = self.config
+        if not cfg.index_filter_code:
+            return
+        index_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            '..', '..', 'data', 'input', 'index_k_data',
+            f'{cfg.index_filter_code}.csv'
+        )
+        if os.path.exists(index_path):
+            df = pd.read_csv(index_path)
+            df['date'] = pd.to_datetime(df['date'])
+            df = df.sort_values('date').reset_index(drop=True)
+            self._index_data = df
+            logger.info(f'  加载大盘指数: {cfg.index_filter_code} ({len(df)} 行)')
+        else:
+            logger.warning(f'  大盘指数文件不存在: {index_path}, 跳过过滤')
+
     def _generate_signals(self):
         for code, df in self._stock_datas.items():
             self._stock_datas[code] = self.signal_engine.generate(df)
 
     def _apply_risk_controls(self):
         cfg = self.config
-        for code, df in self._stock_datas.items():
+        codes = list(self._stock_datas.keys())
+
+        for idx, code in enumerate(codes):
+            df = self._stock_datas[code]
+
             # 涨跌停限制
             df = self.risk_manager.apply_limit_up_down(df)
+
             # 止盈止损
             df = self.risk_manager.apply_stop_strategy(
                 df, self.signal_name,
@@ -233,7 +233,25 @@ class BacktestEngine:
                 stop_profit_pct=cfg.stop_profit_pct,
                 drawdown_pct=cfg.drawdown_pct,
             )
-            # 修正：如果 stop_signal 为卖出信号(-3)且已有卖出，将 pos 置 0
+
+            # 移动止损（如果启用）
+            if cfg.trailing_stop_pct > 0:
+                df = self.risk_manager.apply_trailing_stop(
+                    df, self.signal_name,
+                    trailing_stop_pct=cfg.trailing_stop_pct,
+                    trailing_profit_pct=cfg.trailing_profit_pct,
+                )
+
+            # 大盘环境过滤（如果启用）
+            if cfg.index_filter_code and self._index_data is not None:
+                df = self.risk_manager.apply_market_filter(
+                    df, self._index_data,
+                    index_code=cfg.index_filter_code,
+                    ma_period=cfg.index_filter_ma,
+                    drop_threshold=cfg.index_filter_drop,
+                )
+
+            # 信号修正
             for i in range(1, len(df)):
                 sig_col = f'{self.signal_name}_signal'
                 if df.at[i, sig_col] == -1 and df.at[i, 'stop_signal'] in [-1, -2, -3]:
@@ -242,10 +260,44 @@ class BacktestEngine:
             self._stock_datas[code] = df
 
     def _calculate_equity_curves(self):
+        cfg = self.config
+        codes = list(self._stock_datas.keys())
+
+        try:
+            from tqdm import tqdm
+            has_tqdm = True
+        except ImportError:
+            has_tqdm = False
+
         self._stock_results = []
-        for code, df in self._stock_datas.items():
-            result = self.equity_calculator.compute_single(df)
-            self._stock_results.append(result)
+
+        def process_one(code):
+            df = self._stock_datas[code]
+            return self.equity_calculator.compute_single(df)
+
+        if cfg.max_workers > 1 and len(codes) > 1:
+            # ---- 并行模式 ----
+            iterator = codes
+            if has_tqdm:
+                iterator = tqdm(codes, desc='  资金曲线', unit='股')
+            else:
+                logger.info(f'  并行计算 {len(codes)} 只股票 ({cfg.max_workers} 线程)')
+
+            with ThreadPoolExecutor(max_workers=cfg.max_workers) as executor:
+                future_map = {executor.submit(process_one, c): c for c in codes}
+                for future in as_completed(future_map):
+                    result = future.result()
+                    self._stock_results.append(result)
+                    if has_tqdm:
+                        iterator.update(0)  # tqdm 自动更新
+        else:
+            # ---- 串行模式 ----
+            iterator = codes
+            if has_tqdm:
+                iterator = tqdm(codes, desc='  资金曲线', unit='股')
+            for code in iterator:
+                result = process_one(code)
+                self._stock_results.append(result)
 
         self._account_data = self.equity_calculator.compute_account(
             self._stock_results
@@ -253,10 +305,7 @@ class BacktestEngine:
 
     def _compute_metrics(self):
         cfg = self.config
-        # 收集交易记录
-        all_trade_records = [
-            r['trade_records'] for r in self._stock_results
-        ]
+        all_trade_records = [r['trade_records'] for r in self._stock_results]
 
         benchmark_ret = None
         if self._benchmark_data is not None:
@@ -272,34 +321,27 @@ class BacktestEngine:
 
     def _generate_reports(self, tag: str = '', ts: str = ''):
         cfg = self.config
-        # 日期时间已由目录层级体现（output/YYYYMMDD/HHMM/），
-        # 文件名只需保留策略标记便于区分即可
         prefix = tag or 'backtest'
 
-        # 交易记录
         all_records = [r['trade_records'] for r in self._stock_results]
-        active_codes = [
-            code for code in cfg.stock_codes if code in self._stock_datas
-        ]
+        active_codes = [code for code in cfg.stock_codes if code in self._stock_datas]
+
         self.reporter.save_trade_records(
             all_records, active_codes,
             filename=f'{prefix}_trade_records.csv',
         )
 
-        # 资金曲线
         self.reporter.save_account_curve(
             self._account_data, self._benchmark_data,
             filename=f'{prefix}_account_curve.csv',
         )
 
-        # 绩效指标
         end_date_str = str(self._account_data['date'].iloc[-1].date())
         self.reporter.save_metrics(
             self._metrics, cfg.stock_codes, cfg.start_date, end_date_str,
             filename=f'{prefix}_metrics.csv',
         )
 
-        # 图表
         codes_str = '-'.join(active_codes[:5])
         if len(active_codes) > 5:
             codes_str += f'-etc{len(active_codes)-5}'
