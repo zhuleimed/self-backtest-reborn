@@ -255,6 +255,7 @@ class ComboGFSignal(BaseSignal):
 ## 输出结构
 
 每次运行生成 `output/YYYYMMDD/HHMM/` 目录（日期+时间，永远不会互相覆盖）：
+- **时间戳在脚本启动时确定**，单次运行的所有结果（含并行回测、多指标对比、参数优化）均写入同一目录
 - `*_trade_records.csv` — 每笔交易的买卖明细（含分单处理）
 - `*_account_curve.csv` — 每日资金曲线（多股票聚合）
 - `*_metrics.csv` — 绩效指标汇总
