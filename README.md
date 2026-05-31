@@ -33,7 +33,13 @@ python run_backtest.py --list-indicators
 # 3. 运行回测（KDJ 指标，单只股票）
 python run_backtest.py --stocks 000012 --indicator KDJ
 
-# 4. 看结果
+# 4. 多指标组合（宽松买入+严格卖出）
+python run_backtest.py --stocks 000012 --indicators KDJ,RSI --combo-mode strict_buy
+
+# 5. 全量指标对比（自动排序，看 Top 5）
+python run_compare.py --strategies ALL --stocks 000012 --top-n 5
+
+# 6. 看结果
 ls output/20260530/1850/
 ```
 
@@ -110,6 +116,18 @@ python run_backtest.py \
 
 # 自定义标签（输出文件前缀）
 python run_backtest.py --stocks 000012 --indicator KDJ --tag my_test
+
+# 多指标组合（严格模式：同步买入，同步卖出）
+python run_backtest.py \
+    --stocks 000012 \
+    --indicators MACD,RSI \
+    --combo-mode all_agree
+
+# 多指标组合（宽松买入+严格卖出：同步买入，任一卖出即卖）
+python run_backtest.py \
+    --stocks 000012 \
+    --indicators KDJ,RSI,MACD \
+    --combo-mode strict_buy
 ```
 
 ### 参数列表
@@ -121,7 +139,9 @@ python run_backtest.py --stocks 000012 --indicator KDJ --tag my_test
 | `--stocks` | 字符串 | ✅ | 股票代码，多只逗号分隔，如 `000012,000014` | — |
 | `--start` | 字符串 | ❌ | 开始日期 `YYYY-MM-DD` | `2022-01-01` |
 | `--end` | 字符串 | ❌ | 结束日期 `YYYY-MM-DD`，不填=到最新 | 最新 |
-| `--indicator` | 字符串 | ❌ | 技术指标名称（大写）。查看全部: `--list-indicators` | `KDJ` |
+| `--indicator` | 字符串 | ❌ | 单个技术指标名称（大写）。查看全部: `--list-indicators` | `KDJ` |
+| `--indicators` | 字符串 | ❌ | 多指标组合，逗号分隔。配合 `--combo-mode` 使用 | — |
+| `--combo-mode` | 枚举 | ❌ | 多指标组合模式: `all_agree`(严格) / `strict_buy`(宽松买+严格卖) | `all_agree` |
 | `--tag` | 字符串 | ❌ | 输出文件名前缀 | 指标名_开始日期 |
 | `--list-indicators` | 标志 | ❌ | 列出全部 97 个指标 | — |
 
@@ -214,13 +234,17 @@ python run_compare.py \
     --start 2023-01-01 \
     --money 50000 \
     --stop-loss 0.03
+
+# 全量对比所有97个指标，仅显示 Top 5 图表
+python run_compare.py --strategies ALL --stocks 000012 --top-n 5
 ```
 
 ### 对比参数
 
 | 参数 | 类型 | 说明 | 默认值 |
 |------|------|------|--------|
-| `--strategies` | 字符串 | 指标名称逗号分隔 | `KDJ,RSI,MACD,CCI` |
+| `--strategies` | 字符串 | 指标名称逗号分隔。`ALL`=全量对比97个指标 | `KDJ,RSI,MACD,CCI` |
+| `--top-n` | 整数 | 全量对比时图表显示 Top N 个最佳指标（默认8） | `8` |
 | `--stocks` | 字符串 | 股票代码 | 配置文件默认 |
 | `--start` | 字符串 | 开始日期 | 配置文件默认 |
 | `--end` | 字符串 | 结束日期 | 最新 |
@@ -415,6 +439,21 @@ ls output/20260530/1719/
 ### Q8: 不同时间运行的结果会互相覆盖吗？
 
 **不会**。每次运行都会生成 `output/YYYYMMDD/HHMM/` 时间目录，完全隔离。
+
+### Q9: 回测结果和真实交易会有偏差吗？
+
+框架做了以下修正以消除未来函数（look-ahead bias）：
+
+1. **信号后移一天**：所有买卖信号在生成后整体后移一天。`pos[i]` 反映 `i-1` 日的信号，在 `i` 日开盘执行。这样信号使用的 `close` 数据在交易之前就已经是已知信息
+2. **次日开盘成交**：所有交易以信号产生后的 **次日开盘价** 成交，不是当日收盘价
+3. **虚拟卖出**：回测到期仍持有的股票，以最后一日收盘价虚拟卖出，形成完整闭环
+
+### Q10: 多指标组合和单指标回测有什么区别？
+
+- **单指标**：使用 `--indicator` 参数，运行一个技术指标的信号
+- **多指标组合**：使用 `--indicators` 参数（复数），指定多个指标，通过 `--combo-mode` 控制信号合成规则
+  - `all_agree`：所有指标同时买入才买，同时卖出才卖
+  - `strict_buy`：所有指标同时买入才买，任一卖出就卖
 
 ---
 

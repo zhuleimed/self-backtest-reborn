@@ -105,10 +105,38 @@ python run_backtest.py \
 ```
 
 支持参数（见 `run_backtest.py` 的 `parse_args()`）：
-- 策略参数：`--indicator`, `--n`, `--n1`, `--n2`, `--n3`, `--m`
+- 策略参数：`--indicator`, `--indicators`, `--combo-mode`, `--n`, `--n1`, `--n2`, `--n3`, `--m`
 - 资金：`--money`, `--slippage`, `--commission`, `--tax`, `--position`
 - 风控：`--stop-loss`, `--stop-profit`, `--drawdown`, `--trailing-stop`, `--trailing-profit`
 - 性能：`--workers`（并行线程数，默认4）
+
+### 多指标组合信号
+
+将多个技术指标的买卖信号按规则合成一个信号，实现更稳健的交易决策。
+
+```bash
+# 严格模式（all_agree）：所有指标同时买入才买，同时卖出才卖
+python run_backtest.py --stocks 000012 \
+  --indicators MACD,RSI \
+  --combo-mode all_agree
+
+# 宽松买入+严格卖出（strict_buy）：所有买入才买，任一卖出就卖
+python run_backtest.py --stocks 000012 \
+  --indicators KDJ,RSI,MACD \
+  --combo-mode strict_buy
+```
+
+两种组合模式：
+
+| 模式 | 买入 | 卖出 | 适用场景 |
+|------|------|------|----------|
+| `all_agree` | 所有指标 = 1 | 所有指标 = -1 | 严格过滤，减少噪音交易 |
+| `strict_buy` | 所有指标 = 1 | 任一指标 = -1 | 买入谨慎，卖出果断 |
+
+> 注：`--indicators` 与 `--indicator` 互斥，前者用于多指标组合，后者用于单指标。
+> `--n / --n1 / --n2 / --n3 / --m` 等参数会同时传递给所有子指标。
+
+实现类：`signals/gf.py` 中的 `ComboGFSignal`，直接调用各指标的 `_signal_{NAME}()` 方法获取原始信号，再按规则合成。不经过 `GFSignal.compute()` 的列重命名步骤。
 
 ### 多指标对比
 
@@ -119,11 +147,17 @@ python run_compare.py
 # 指定指标对比
 python run_compare.py --strategies KDJ,MACD,RSI,CCI
 
+# 全量对比（所有 97 个指标，自动跳过未实现的）
+python run_compare.py --strategies ALL --stocks 000012 --top-n 5
+
 # 自定义参数
 python run_compare.py --strategies KDJ,RSI --stocks 000012 --start 2023-01-01
 ```
 
-生成：对比 CSV 表 + 多策略叠加曲线图 + 绩效雷达图。
+生成：对比 CSV 表（按总收益率降序排列）+ 控制台 Top-N 排行榜 + 多策略叠加曲线图 + 绩效雷达图。
+- `--strategies ALL` 遍历 `GFSignal.INDICATORS` 全部指标，**耗时较长**
+- `--top-n` 控制图表显示前 N 个最佳策略（默认 8）
+- 对比时自动跳过信号方法未实现或参数异常的指标
 
 ### 参数优化
 
@@ -174,6 +208,19 @@ class GFSignal(BaseSignal):
 | **CROSS_LINE** | 两线交叉 | MACD(DIF/DEA), TYP, OBV |
 | **BAND** | 突破轨道 | PAC, ENV |
 
+### 多指标组合：ComboGFSignal
+
+`signals/gf.py` 中的 `ComboGFSignal` 支持将多个指标的信号按规则合成：
+
+```python
+class ComboGFSignal(BaseSignal):
+    name = 'GF'  # 最终仍输出 GF_signal 列，不改变下游流水线
+```
+
+实现原理：直接调用各子指标的 `_signal_{NAME}()` 方法获取原始 `{NAME}_signal` 列，
+然后按组合规则（`all_agree` / `strict_buy`）合成单一 `GF_signal` 列。
+不经过 `GFSignal.compute()` 的列重命名步骤，避免子信号被覆盖。
+
 ### 添加新指标
 
 1. 在 `GFSignal.INDICATORS` 列表添加指标名（大写）
@@ -181,6 +228,7 @@ class GFSignal(BaseSignal):
 3. 实现 `_signal_{NAME}()` 方法，添加 `{NAME}_signal` 列（值：1/-1/0）
 
 > **注意**：`INDICATORS` 列表的指标必须与 `_DEFAULT_PARAMS` 和 `_signal_{NAME}` 方法一一对应。新增指标时三条都要加。
+> 缺少对应 `_signal_` 方法的指标会在运行时抛出 `NotImplementedError`，对比模式会跳过。
 
 ## 风控体系
 
@@ -215,6 +263,7 @@ class GFSignal(BaseSignal):
 
 - **全局信号约定**：`1` = 买入, `-1` = 卖出, `0` = 无操作；`pos` 列：`1` = 持仓, `0` = 空仓
 - **交易行为**：以次日 `open` 成交（非当日 close），含双边滑点（默认0.3%）
+- **时序修正**：信号在 `_generate_signals()` 末尾整体后移一天（`shift(1)`），消除 look-ahead bias。即 `pos[i]` 反映 `i-1` 日的信号，在 `i` 日开盘执行
 - **最小交易单位**：100股（整手），`theory_num // 100 * 100`
 - **佣金最低5元**：`max(buy_cost * commission_rate, 5.0)`
 - **持仓会计**：FIFO 卖出（买入订单队列先进先出），含分单利润分摊
