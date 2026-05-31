@@ -75,6 +75,12 @@ class Reporter:
                 })
 
         df = pd.DataFrame(records)
+
+        # 无交易记录时返回空文件
+        if df.empty:
+            print(f'  📄 交易记录 → (无交易)')
+            return ''
+
         # 按股票代码和日期排序
         df = df.sort_values(['股票代码', '日期'])
 
@@ -161,12 +167,13 @@ class Reporter:
             ax.plot(bench_aligned, label='基准收益', color='#A23B72',
                     linewidth=1.5, linestyle='--')
 
-        # 标注最大回撤区间
+        # 标注最大回撤区间（仅有意义回撤时绘制）
         cumulative = account_data['equity_cumulative_returns']
         running_max = cumulative.cummax()
         drawdown = (cumulative - running_max) / running_max
-        dd_min_idx = drawdown.idxmin()
-        if not np.isnan(dd_min_idx):
+        dd_min_val = drawdown.min()
+        if not np.isnan(dd_min_val) and dd_min_val < -1e-10:
+            dd_min_idx = drawdown.idxmin()
             peak_before = cumulative.iloc[:dd_min_idx].idxmax()
             recovery = (cumulative.iloc[dd_min_idx:] >= running_max.iloc[dd_min_idx])
             recovery_idx = recovery[recovery].index.min() if recovery.any() else len(cumulative)

@@ -188,6 +188,16 @@ class BacktestEngine:
         for code, df in self._stock_datas.items():
             self._stock_datas[code] = self.signal_engine.generate(df)
 
+        # 消除 look-ahead bias：信号基于前一日收盘数据，在当日开盘执行
+        # 向量化计算时所有行的数据（含当日 close）都在内存中，但交易仅用 open，
+        # 必须将信号整体后移一天，让 pos[i] 反映 i-1 日的信号，而非 i 日。
+        for code in self._stock_datas:
+            df = self._stock_datas[code]
+            sig_col = f'{self.signal_name}_signal'
+            if sig_col in df.columns:
+                df[sig_col] = df[sig_col].shift(1).fillna(0)
+            df['pos'] = df['pos'].shift(1).ffill().fillna(0)
+
     def _apply_risk_controls(self):
         cfg = self.config
         codes = list(self._stock_datas.keys())
