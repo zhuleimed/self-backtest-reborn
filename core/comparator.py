@@ -85,7 +85,11 @@ class StrategyComparator:
         config.tag = tag
 
         print(f'\n[对比] 运行策略 "{name}"…')
-        metrics = engine.run()
+        try:
+            metrics = engine.run()
+        except Exception as e:
+            print(f'  ⚠ 跳过 {name}: {e}')
+            return self
 
         # 收集交易记录数
         trade_count = sum(
@@ -109,11 +113,18 @@ class StrategyComparator:
             self.add_strategy(name, signal, config)
         return self
 
-    def report(self, filename: str = '') -> str:
+    def report(self, filename: str = '', top_n: int = 8) -> str:
         """
         生成对比报告：
           1. 对比指标 CSV
           2. 收益率曲线叠加图
+
+        Parameters
+        ----------
+        filename : str
+            自定义 CSV 文件名
+        top_n : int
+            图表中显示 Top N 个最佳策略（按总收益率排序）。0=全部显示。
         """
         if not self._results:
             raise RuntimeError('没有对比结果，请先调用 add_strategy 或 compare')
@@ -132,6 +143,9 @@ class StrategyComparator:
 
         df = pd.DataFrame(rows)
         cols = ['策略名称'] + [c for c in df.columns if c != '策略名称']
+
+        # 按总收益率降序排列
+        df = df.sort_values('总收益率', ascending=False).reset_index(drop=True)
         df = df[cols]
 
         csv_path = (filename or
@@ -140,8 +154,27 @@ class StrategyComparator:
         df.to_csv(csv_path, index=False, encoding='utf-8-sig')
         print(f'\n  📄 对比报告 → {csv_path}')
 
-        # ---- 收益率曲线叠加图 ----
-        self._plot_comparison(ts)
+        # 打印 Top-N 排行榜
+        print(f'\n  🏆 收益率 Top {min(top_n, len(df))}:')
+        for i, row in df.head(top_n).iterrows():
+            print(f'    #{i+1:2d}  {row["策略名称"]:18s}  '
+                  f'收益率={row["总收益率"]:.2%}  '
+                  f'夏普={row["夏普比率"]:.2f}  '
+                  f'回撤={row["最大回撤"]:.2%}')
+
+        # ---- 收益率曲线叠加图（仅 Top-N）----
+        if top_n > 0 and len(self._results) > top_n:
+            # 按总收益率排序后取前 top_n 个
+            sorted_results = sorted(
+                self._results,
+                key=lambda r: r.metrics.total_return,
+                reverse=True,
+            )
+            plot_results = sorted_results[:top_n]
+        else:
+            plot_results = self._results
+
+        self._plot_comparison(ts, plot_results)
 
         return csv_path
 
@@ -149,9 +182,10 @@ class StrategyComparator:
     # 绘图
     # ------------------------------------------------------------------
 
-    def _plot_comparison(self, ts: str):
+    def _plot_comparison(self, ts: str, plot_results: list = None):
         """绘制多策略对比图（收益率曲线 + 雷达图）"""
-        n_strategies = len(self._results)
+        results = plot_results if plot_results is not None else self._results
+        n_strategies = len(results)
         if n_strategies == 0:
             return
 
@@ -165,7 +199,7 @@ class StrategyComparator:
             fig = plt.figure(figsize=(20, 8))
 
             ax1 = fig.add_subplot(1, 2, 1)
-            for idx, result in enumerate(self._results):
+            for idx, result in enumerate(results):
                 curve = result.account_curve['equity_cumulative_returns'] - 1
                 color = colors[idx % len(colors)]
                 style = markers[idx % len(markers)]
@@ -186,7 +220,7 @@ class StrategyComparator:
             radar_labels = ['夏普', 'Sortino', 'Calmar', '胜率', '盈亏比']
 
             raw_data = []
-            for result in self._results:
+            for result in results:
                 d = result.metrics.to_dict()
                 raw_data.append([d.get(m, 0) for m in radar_metrics])
 
@@ -198,7 +232,7 @@ class StrategyComparator:
             angles = np.linspace(0, 2 * np.pi, len(radar_labels), endpoint=False).tolist()
             angles += angles[:1]
 
-            for idx, result in enumerate(self._results):
+            for idx, result in enumerate(results):
                 values = norm_data[idx].tolist() + norm_data[idx][:1].tolist()
                 ax2.plot(angles, values, color=colors[idx % len(colors)],
                          linewidth=1.5, label=result.name, marker='o', markersize=4)
@@ -215,7 +249,7 @@ class StrategyComparator:
         else:
             # ---- 单曲线图 ----
             fig, ax = plt.subplots(figsize=(16, 7))
-            for idx, result in enumerate(self._results):
+            for idx, result in enumerate(results):
                 curve = result.account_curve['equity_cumulative_returns'] - 1
                 color = colors[idx % len(colors)]
                 style = markers[idx % len(markers)]

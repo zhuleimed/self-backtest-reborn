@@ -35,7 +35,7 @@ SIGNAL_FACTORY = {'GF': GFSignal}
 def main():
     parser = argparse.ArgumentParser(description='多策略横向对比（GF 指标间对比）')
     parser.add_argument('--strategies', type=str, default='',
-                        help='指标名称，逗号分隔，如 KDJ,MACD,RSI')
+                        help='指标名称，逗号分隔，如 KDJ,MACD,RSI。使用 ALL 进行全量对比')
     parser.add_argument('--stocks', type=str, default='',
                         help='股票代码，逗号分隔')
     parser.add_argument('--start', type=str, default='',
@@ -48,6 +48,8 @@ def main():
                         help='每只股票初始资金')
     parser.add_argument('--stop-loss', type=float, default=None,
                         help='止损比例')
+    parser.add_argument('--top-n', type=int, default=8,
+                        help='全量对比时图表显示 Top N 个最佳指标（默认 8）')
     args = parser.parse_args()
 
     if args.list:
@@ -59,7 +61,12 @@ def main():
 
     # 确定指标列表
     if args.strategies:
-        names = [s.strip().upper() for s in args.strategies.split(',')]
+        raw_names = [s.strip().upper() for s in args.strategies.split(',')]
+        if len(raw_names) == 1 and raw_names[0] == 'ALL':
+            names = GFSignal.INDICATORS  # 全量对比
+            print(f'  🏁 全量对比模式: {len(names)} 个指标全部参与')
+        else:
+            names = raw_names
     else:
         names = ['KDJ', 'RSI', 'MACD', 'CCI']  # 默认对比 4 个常用指标
 
@@ -101,10 +108,16 @@ def main():
         if name not in GFSignal.INDICATORS:
             print(f'  ⚠ 跳过未知指标: {name}')
             continue
-        strategies.append((name, GFSignal(indicator=name)))
+        try:
+            # 验证指标是否可正常运行（部分指标参数不完整会报错）
+            test_signal = GFSignal(indicator=name)
+            strategies.append((name, test_signal))
+        except Exception as e:
+            print(f'  ⚠ 跳过不可用的指标 {name}: {e}')
+            continue
 
     comparator.compare(strategies, config)
-    comparator.report()
+    comparator.report(top_n=args.top_n)
 
 
 if __name__ == '__main__':

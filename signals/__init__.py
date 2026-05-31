@@ -5,6 +5,6 @@
 独立信号模块已整合进 GF，不再单独维护。
 """
 
-from .gf import GFSignal
+from .gf import GFSignal, ComboGFSignal
 
-__all__ = ['GFSignal']
+__all__ = ['GFSignal', 'ComboGFSignal']

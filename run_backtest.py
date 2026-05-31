@@ -15,6 +15,12 @@
     --money 50000 \\
     --stop-loss 0.03
 
+  # 多指标组合（所有指标同时买入才买入，任一卖出即卖出）
+  python run_backtest.py \\
+    --stocks 000012 \\
+    --indicators KDJ,RSI,MACD \\
+    --combo-mode strict_buy
+
   # 查看所有可用指标
   python run_backtest.py --list-indicators
 """
@@ -26,25 +32,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core.engine import BacktestEngine, BacktestConfig
-from signals.gf import GFSignal
+from signals.gf import GFSignal, ComboGFSignal
 from config.backtest_config import DEFAULT_CONFIG
-
-
-# ============================================================================
-# 信号工厂：仅有 GF 综合策略（涵盖 97 个技术指标）
-# ============================================================================
-
-SIGNAL_FACTORY = {
-    'GF': GFSignal,
-}
-
-
-def create_signal(name: str, params: dict = None):
-    """创建信号策略实例"""
-    cls = SIGNAL_FACTORY.get(name)
-    if cls is None:
-        raise ValueError(f'未知信号策略: {name}，可选: {list(SIGNAL_FACTORY.keys())}')
-    return cls(**(params or {}))
 
 
 # ============================================================================
@@ -74,7 +63,13 @@ def parse_args():
     parser.add_argument('--end', type=str, default='',
                         help='【可选】回测结束日期 YYYY-MM-DD，不填则到最新数据')
     parser.add_argument('--indicator', type=str, default='KDJ',
-                        help='【可选】技术指标名称（大写），默认 KDJ。查看全部: --list-indicators')
+                        help='【可选】单个技术指标名称（大写），默认 KDJ。查看全部: --list-indicators')
+    parser.add_argument('--indicators', type=str, default='',
+                        help='【可选】多指标组合，逗号分隔，如 KDJ,RSI,MACD。'
+                             '配合 --combo-mode 使用')
+    parser.add_argument('--combo-mode', type=str, default='all_agree',
+                        choices=['all_agree', 'strict_buy'],
+                        help='【可选】多指标组合模式: all_agree(严格) / strict_buy(宽松买+严格卖)')
     parser.add_argument('--tag', type=str, default='',
                         help='【可选】回测标识，用于输出文件命名')
 
@@ -224,14 +219,27 @@ def main():
         cfg['max_workers'] = args.workers
 
     # 构建信号参数
-    signal_params = {'indicator': cfg['indicator']}
+    signal_params = {}
     for pname in ['n', 'n1', 'n2', 'n3', 'm']:
         key = f'signal_params_{pname}'
         if key in cfg:
             signal_params[pname] = cfg[key]
 
-    # 创建策略
-    strategy = GFSignal(**signal_params)
+    # 判断是否为多指标组合模式
+    combo_indicators = [s.strip().upper() for s in args.indicators.split(',') if s.strip()]
+    if len(combo_indicators) >= 2:
+        # 多指标组合模式
+        strategy = ComboGFSignal(indicators=combo_indicators,
+                                 combo_mode=args.combo_mode,
+                                 **signal_params)
+        tag_indicator = f'COMBO_{"+".join(strategy.indicators)}'
+        print(f'  组合策略: {" + ".join(strategy.indicators)} [{args.combo_mode}]')
+    else:
+        # 单指标模式（原行为）
+        cfg['indicator'] = args.indicator.upper()
+        signal_params['indicator'] = cfg['indicator']
+        strategy = GFSignal(**signal_params)
+        tag_indicator = strategy._indicator
 
     # 创建配置对象
     config = BacktestConfig(
@@ -251,7 +259,7 @@ def main():
         trailing_stop_pct=cfg.get('trailing_stop_pct', 0.0),
         trailing_profit_pct=cfg.get('trailing_profit_pct', 0.15),
         max_workers=cfg.get('max_workers', 4),
-        tag=args.tag or f'{strategy._indicator}_{cfg["start_date"]}',
+        tag=args.tag or f'{tag_indicator}_{cfg["start_date"]}',
     )
 
     # 执行回测

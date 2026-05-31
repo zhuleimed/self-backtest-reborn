@@ -704,3 +704,99 @@ class GFSignal(BaseSignal):
         df.loc[buy, 'SKDJ_signal'] = 1
         df.loc[sell, 'SKDJ_signal'] = -1
         return df
+
+
+# ======================================================================
+# 多指标组合信号
+# ======================================================================
+
+class ComboGFSignal(BaseSignal):
+    """
+    多指标组合信号策略——将多个指标的买卖信号按规则合成一个信号。
+
+    两种组合模式：
+
+    **all_agree（严格模式）**：所有指标同时产生买入信号时才买入，
+    同时产生卖出信号时才卖出。分歧时保持持仓不变。
+
+    **strict_buy（宽松买入 + 严格卖出）**：
+    - 买入：所有指标同时产生买入信号时才买入
+    - 卖出：任一指标产生卖出信号时就卖出
+
+    参数传递：--n / --n1 / --n2 / --n3 / --m 等会传递给所有子指标，
+    各指标只会使用自己需要的参数。
+
+    用法:
+        python run_backtest.py --stocks 000012 --indicators KDJ,RSI,MACD \\
+            --combo-mode all_agree
+
+        python run_backtest.py --stocks 000012 --indicators KDJ,RSI,MACD \\
+            --combo-mode strict_buy
+    """
+
+    name = 'GF'
+
+    def __init__(self, indicators, combo_mode='all_agree', **kwargs):
+        """
+        Parameters
+        ----------
+        indicators : list
+            指标名称列表，如 ['KDJ', 'RSI', 'MACD']
+        combo_mode : str
+            组合模式：'all_agree'（严格）或 'strict_buy'（宽松买/严格卖）
+        **kwargs : dict
+            传递给所有子指标的参数。
+        """
+        # 标准化指标名
+        raw_list = [ind.upper().replace('_', '').replace(' ', '')
+                    for ind in indicators]
+        self.indicators = [
+            next(k for k in GFSignal.INDICATORS if k.replace('_', '') == raw)
+            for raw in raw_list
+        ]
+        self.combo_mode = combo_mode
+        # 每个子指标独立实例（共享用户传入的 kwargs）
+        # 注意：只使用 _signal_{NAME}() 方法，不调用 compute()，
+        # 避免 GFSignal.compute() 将 {ind}_signal 重命名为 GF_signal 并删除原列
+        self._sub_signals = [
+            GFSignal(indicator=ind, **kwargs) for ind in self.indicators
+        ]
+        self.params = {'indicators': self.indicators, 'combo_mode': combo_mode}
+
+    def compute(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        运行所有子指标的 _signal_{NAME}()，按组合规则合成单一 GF_signal。
+
+        注意：
+        - 这里直接调用 _signal_{NAME}() 而不是子指标的 compute()，
+          因为 compute() 会将各指标信号列删除并重命名为统一的 GF_signal
+        - 每个 _signal_{NAME}() 负责添加 {indicator}_signal 列
+        - 最终由本方法组合后写入 GF_signal
+        """
+        df = data.copy()
+
+        # 1. 逐一计算每个指标的原始信号（各产生 {indicator}_signal 列，不重命名）
+        for sig in self._sub_signals:
+            method = getattr(sig, f'_signal_{sig._indicator}')
+            df = method(df)
+
+        # 2. 按组合规则合成
+        buy = None
+        sell = None
+        for ind in self.indicators:
+            s = df[f'{ind}_signal']
+            if buy is None:
+                buy = (s == 1)
+                sell = (s == -1)
+            else:
+                buy = buy & (s == 1)
+                if self.combo_mode == 'all_agree':
+                    sell = sell & (s == -1)
+                else:  # strict_buy
+                    sell = sell | (s == -1)
+
+        df['GF_signal'] = 0
+        df.loc[buy, 'GF_signal'] = 1
+        df.loc[sell, 'GF_signal'] = -1
+
+        return df
