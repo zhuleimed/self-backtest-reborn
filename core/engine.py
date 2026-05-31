@@ -14,7 +14,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -122,11 +121,7 @@ class BacktestEngine:
         cfg = self.config
         tag = cfg.tag or self.signal_name
 
-        now = datetime.now()
-        date_str = now.strftime('%Y%m%d')
-        time_str = now.strftime('%H%M')
-        ts = f'{date_str}_{time_str}'
-        output_subdir = os.path.join(cfg.output_dir, date_str, time_str)
+        output_subdir = cfg.output_dir
         os.makedirs(output_subdir, exist_ok=True)
         self.reporter.output_dir = output_subdir
 
@@ -161,7 +156,7 @@ class BacktestEngine:
         # ---- Step 5: 绩效与报告 ----
         logger.info('[5/5] 计算绩效 & 生成报告…')
         self._compute_metrics()
-        self._generate_reports(tag, ts)
+        self._generate_reports(tag)
 
         self.reporter.print_summary(self._metrics)
         logger.info(f'回测完成 ✓')

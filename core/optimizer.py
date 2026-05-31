@@ -51,20 +51,13 @@ class ParameterOptimizer:
     }
 
     def __init__(self, output_dir: str):
-        self._base_output_dir = output_dir
         self.output_dir = output_dir
         self._results: List[ParamGridResult] = []
         self._top_k = 5
         self._setup_matplotlib()
 
     def _ensure_dated_dir(self):
-        """创建日期/时间分层输出目录并更新 self.output_dir"""
-        now = datetime.now()
-        self.output_dir = os.path.join(
-            self._base_output_dir,
-            now.strftime('%Y%m%d'),
-            now.strftime('%H%M'),
-        )
+        """确保输出目录存在（调用方已传入完整时间戳路径）"""
         os.makedirs(self.output_dir, exist_ok=True)
 
     # ------------------------------------------------------------------

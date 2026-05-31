@@ -17,6 +17,7 @@ import argparse
 import json
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -111,11 +112,14 @@ def main():
     if args.end:
         cfg['end_date'] = args.end
 
+    base_output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    timestamp = datetime.now().strftime('%Y%m%d/%H%M')
     config = BacktestConfig(
         stock_codes=cfg['stock_codes'],
         start_date=cfg['start_date'],
         end_date=cfg.get('end_date', ''),
         benchmark_code='sh.000300',
+        output_dir=os.path.join(base_output_dir, timestamp),
         initial_money_per_stock=cfg.get('initial_money_per_stock', 10000),
         slippage=cfg.get('slippage', 0.003),
         commission_rate=cfg.get('commission_rate', 0.0005),
@@ -127,9 +131,8 @@ def main():
         drawdown_pct=cfg.get('drawdown_pct', 0.03),
     )
 
-    # 执行优化
-    output_dir = os.path.join(os.path.dirname(__file__), 'output')
-    optimizer = ParameterOptimizer(output_dir)
+    # 执行优化（使用与 BacktestConfig 相同的带时间戳输出目录）
+    optimizer = ParameterOptimizer(os.path.join(base_output_dir, timestamp))
 
     optimizer.grid_search(
         signal_class=GFSignal,

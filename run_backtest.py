@@ -28,6 +28,7 @@
 import argparse
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -242,11 +243,14 @@ def main():
         tag_indicator = strategy._indicator
 
     # 创建配置对象
+    base_output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    timestamp = datetime.now().strftime('%Y%m%d/%H%M')
     config = BacktestConfig(
         stock_codes=cfg['stock_codes'],
         start_date=cfg.get('start_date', '2022-01-01'),
         end_date=cfg.get('end_date', ''),
         benchmark_code=cfg.get('benchmark_code', 'sh.000300'),
+        output_dir=os.path.join(base_output_dir, timestamp),
         initial_money_per_stock=cfg.get('initial_money_per_stock', 10000),
         slippage=cfg.get('slippage', 0.003),
         commission_rate=cfg.get('commission_rate', 0.0005),

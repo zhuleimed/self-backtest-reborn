@@ -19,6 +19,7 @@ run_compare.py — 多策略横向对比（GF 指标间对比）
 import argparse
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -82,11 +83,15 @@ def main():
     if args.end:
         cfg['end_date'] = args.end
 
+    base_output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    timestamp = datetime.now().strftime('%Y%m%d/%H%M')
+    output_dir = os.path.join(base_output_dir, timestamp)
     config = BacktestConfig(
         stock_codes=cfg['stock_codes'],
         start_date=cfg['start_date'],
         end_date=cfg.get('end_date', ''),
         benchmark_code='sh.000300',
+        output_dir=output_dir,
         initial_money_per_stock=args.money or cfg.get('initial_money_per_stock', 10000),
         slippage=cfg.get('slippage', 0.003),
         commission_rate=cfg.get('commission_rate', 0.0005),
@@ -98,8 +103,7 @@ def main():
         drawdown_pct=cfg.get('drawdown_pct', 0.03),
     )
 
-    # 构建策略列表
-    output_dir = os.path.join(os.path.dirname(__file__), 'output')
+    # 构建策略列表（comparator 使用同样带时间戳的输出目录）
     comparator = StrategyComparator(output_dir)
     strategies = []
 
