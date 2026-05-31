@@ -50,6 +50,9 @@ def main():
                         help='止损比例')
     parser.add_argument('--top-n', type=int, default=8,
                         help='全量对比时图表显示 Top N 个最佳指标（默认 8）')
+    parser.add_argument('--workers', type=int, default=1,
+                        help='【可选】并行工作线程数，默认1（串行）。'
+                             '全量对比(--strategies ALL)时建议设为 4~8')
     args = parser.parse_args()
 
     if args.list:
@@ -116,7 +119,10 @@ def main():
             print(f'  ⚠ 跳过不可用的指标 {name}: {e}')
             continue
 
-    comparator.compare(strategies, config)
+    n_workers = args.workers if args.workers > 1 else 1
+    if n_workers > 1 and args.top_n > 0:
+        print(f'  并行: {n_workers} 线程')
+    comparator.compare(strategies, config, max_workers=n_workers)
     comparator.report(top_n=args.top_n)
 
 

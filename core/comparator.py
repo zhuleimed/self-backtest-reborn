@@ -7,7 +7,9 @@
   3. 生成对比报告（CSV + 图表）
 """
 
+import copy
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -105,12 +107,62 @@ class StrategyComparator:
         return self
 
     def compare(self, strategies: List[Tuple[str, BaseSignal]],
-                config: BacktestConfig) -> 'StrategyComparator':
+                config: BacktestConfig,
+                max_workers: int = 1) -> 'StrategyComparator':
         """
         批量对比多个策略。
+
+        Parameters
+        ----------
+        strategies : list of (str, BaseSignal)
+            策略列表
+        config : BacktestConfig
+            共享回测配置
+        max_workers : int
+            并行工作线程数。1=串行（默认）。
+            全量对比（--strategies ALL）时建议设 4~8 以加速。
         """
-        for name, signal in strategies:
-            self.add_strategy(name, signal, config)
+        if max_workers <= 1 or len(strategies) <= 1:
+            # 串行模式（原行为）
+            for name, signal in strategies:
+                self.add_strategy(name, signal, config)
+            return self
+
+        # 并行模式
+        print(f'\n[并行对比] 启动 {min(max_workers, len(strategies))} 个线程 '
+              f'处理 {len(strategies)} 个策略…')
+
+        def run_one(name, signal, cfg):
+            """单线程运行一个策略回测"""
+            print(f'\n[对比] 运行策略 "{name}"…')
+            cfg.tag = f'compare_{name}'
+            engine = BacktestEngine(cfg)
+            engine.register_signal(signal)
+            try:
+                metrics = engine.run()
+            except Exception as e:
+                print(f'  ⚠ 跳过 {name}: {e}')
+                return None
+            return ComparisonResult(
+                name=name,
+                metrics=metrics,
+                account_curve=engine._account_data.copy(),
+                trade_count=sum(
+                    len(r['trade_records']) for r in engine._stock_results
+                ),
+            )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {
+                executor.submit(run_one, name, signal, copy.deepcopy(config))
+                for name, signal in strategies
+            }
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    self._results.append(result)
+
+        print(f'\n[并行对比] 完成: {len(self._results)}/{len(strategies)} 个策略成功')
         return self
 
     def report(self, filename: str = '', top_n: int = 8) -> str:

@@ -108,7 +108,7 @@ python run_backtest.py \
 - 策略参数：`--indicator`, `--indicators`, `--combo-mode`, `--n`, `--n1`, `--n2`, `--n3`, `--m`
 - 资金：`--money`, `--slippage`, `--commission`, `--tax`, `--position`
 - 风控：`--stop-loss`, `--stop-profit`, `--drawdown`, `--trailing-stop`, `--trailing-profit`
-- 性能：`--workers`（并行线程数，默认4）
+- 性能：`--workers`（`run_backtest.py` 回测内多股票并行线程数，默认4；`run_compare.py` 策略间并行线程数，默认1）
 
 ### 多指标组合信号
 
@@ -156,6 +156,7 @@ python run_compare.py --strategies KDJ,RSI --stocks 000012 --start 2023-01-01
 
 生成：对比 CSV 表（按总收益率降序排列）+ 控制台 Top-N 排行榜 + 多策略叠加曲线图 + 绩效雷达图。
 - `--strategies ALL` 遍历 `GFSignal.INDICATORS` 全部指标，**耗时较长**
+- `--workers N` 启用 N 线程并行对比，全量对比时建议 `--workers 4~8`
 - `--top-n` 控制图表显示前 N 个最佳策略（默认 8）
 - 对比时自动跳过信号方法未实现或参数异常的指标
 

@@ -251,6 +251,7 @@ python run_compare.py --strategies ALL --stocks 000012 --top-n 5
 | `--list` | 标志 | 列出所有指标 | — |
 | `--money` | 浮点数 | 每只股票初始资金 | 10000 |
 | `--stop-loss` | 浮点数 | 止损比例 | 0.05 |
+| `--workers` | 整数 | 并行工作线程数，默认1（串行）。全量对比时建议 4~8 | `1` |
 
 ---
 

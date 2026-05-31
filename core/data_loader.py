@@ -13,12 +13,16 @@
 """
 
 import os
+import threading
 from datetime import datetime
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 import baostock as bs
+
+# baostock 不是线程安全的，benchmark 数据加载需全局锁
+_benchmark_lock = threading.Lock()
 
 # 项目根目录常量（相对于本模块的位置）
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -133,18 +137,19 @@ class DataLoader:
         fetch_start = (start_obj - pd.DateOffset(months=1)).strftime('%Y-%m-%d')
         fetch_end = pd.to_datetime(end_date).strftime('%Y-%m-%d') if end_date else ''
 
-        bs.login()
-        rs = bs.query_history_k_data_plus(
-            benchmark_code,
-            'date,open,high,low,close',
-            start_date=fetch_start,
-            end_date=fetch_end,
-            frequency='d',
-        )
-        records = []
-        while rs.error_code == '0' and rs.next():
-            records.append(rs.get_row_data())
-        bs.logout()
+        with _benchmark_lock:
+            bs.login()
+            rs = bs.query_history_k_data_plus(
+                benchmark_code,
+                'date,open,high,low,close',
+                start_date=fetch_start,
+                end_date=fetch_end,
+                frequency='d',
+            )
+            records = []
+            while rs.error_code == '0' and rs.next():
+                records.append(rs.get_row_data())
+            bs.logout()
 
         df = pd.DataFrame(records, columns=rs.fields)
         for col in ['open', 'high', 'low', 'close']:
