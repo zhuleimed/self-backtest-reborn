@@ -9,7 +9,7 @@
 
 import copy
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -36,6 +36,35 @@ class ComparisonResult:
     metrics: BacktestMetrics
     account_curve: pd.DataFrame
     trade_count: int
+
+
+def _worker_compare_strategy(args: Tuple) -> Optional[ComparisonResult]:
+    """
+    模块级 worker 函数：在子进程中运行单个策略回测。
+
+    ProcessPoolExecutor 要求目标函数在模块级别定义。
+    每个子进程独立创建 BacktestEngine，避免共享状态。
+    """
+    name, signal, cfg = args
+    from .engine import BacktestEngine
+
+    cfg.tag = f'compare_{name}'
+    engine = BacktestEngine(cfg)
+    engine.register_signal(signal)
+    try:
+        metrics = engine.run()
+    except Exception as e:
+        print(f'  ⚠ 跳过 {name}: {e}')
+        return None
+
+    return ComparisonResult(
+        name=name,
+        metrics=metrics,
+        account_curve=engine._account_data.copy(),
+        trade_count=sum(
+            len(r['trade_records']) for r in engine._stock_results
+        ),
+    )
 
 
 class StrategyComparator:
@@ -122,32 +151,15 @@ class StrategyComparator:
             return self
 
         # 并行模式
-        print(f'\n[并行对比] 启动 {min(max_workers, len(strategies))} 个线程 '
+        print(f'\n[并行对比] 启动 {min(max_workers, len(strategies))} 个进程 '
               f'处理 {len(strategies)} 个策略…')
 
-        def run_one(name, signal, cfg):
-            """单线程运行一个策略回测"""
-            print(f'\n[对比] 运行策略 "{name}"…')
-            cfg.tag = f'compare_{name}'
-            engine = BacktestEngine(cfg)
-            engine.register_signal(signal)
-            try:
-                metrics = engine.run()
-            except Exception as e:
-                print(f'  ⚠ 跳过 {name}: {e}')
-                return None
-            return ComparisonResult(
-                name=name,
-                metrics=metrics,
-                account_curve=engine._account_data.copy(),
-                trade_count=sum(
-                    len(r['trade_records']) for r in engine._stock_results
-                ),
-            )
-
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        with ProcessPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(run_one, name, signal, copy.deepcopy(config))
+                executor.submit(
+                    _worker_compare_strategy,
+                    (name, signal, copy.deepcopy(config)),
+                )
                 for name, signal in strategies
             }
             for future in as_completed(futures):
