@@ -45,6 +45,11 @@ def _worker_compare_strategy(args: Tuple) -> Optional[ComparisonResult]:
     ProcessPoolExecutor 要求目标函数在模块级别定义。
     每个子进程独立创建 BacktestEngine，避免共享状态。
     """
+    import warnings
+    warnings.filterwarnings('ignore')
+    import numpy as np
+    np.seterr(all='ignore')
+
     name, signal, cfg = args
     from .engine import BacktestEngine
 
