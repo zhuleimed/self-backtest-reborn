@@ -545,7 +545,13 @@ class GFSignal(BaseSignal):
         return df
 
     def _signal_EXPMA(self, df):
-        return self._signal_SROC(df)  # placeholder, same pattern
+        n = self.params['N']
+        val = gf.EMA(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['EXPMA_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'EXPMA_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'EXPMA_signal'] = -1
+        return df
 
     def _signal_QSTICK(self, df):
         n = self.params['N']
@@ -707,8 +713,578 @@ class GFSignal(BaseSignal):
 
 
 # ======================================================================
-# 多指标组合信号
+# 价格动量指标（补充）
+# 模式: CROSS_ZERO = 上穿0买入/下穿0卖出
+#       CROSS_THRESHOLD = 固定阈值穿越
+#       CROSS_MA = 价格上穿均线买入/下穿卖出
+#       CROSS_LINE = 两线交叉
 # ======================================================================
+
+# ------------------- CROSS_ZERO: 上穿0买入/下穿0卖出 -------------------
+
+    def _signal_TSI(self, df):
+        p = self.params
+        val = gf.TSI(df['close'].values, p['N1'], p['N2'])
+        s = pd.Series(val, index=df.index)
+        df['TSI_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'TSI_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'TSI_signal'] = -1
+        return df
+    
+    def _signal_PPO(self, df):
+        p = self.params
+        ppo_val, ppo_signal = gf.PPO(df['close'].values, p['N1'], p['N2'], p['N3'])
+        s1, s2 = pd.Series(ppo_val, index=df.index), pd.Series(ppo_signal, index=df.index)
+        df['PPO_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'PPO_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'PPO_signal'] = -1
+        return df
+    
+    def _signal_PMO(self, df):
+        p = self.params
+        pmo_val, pmo_signal = gf.PMO(df['close'].values, p['N1'], p['N2'], p['N3'])
+        s1, s2 = pd.Series(pmo_val, index=df.index), pd.Series(pmo_signal, index=df.index)
+        df['PMO_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'PMO_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'PMO_signal'] = -1
+        return df
+    
+    def _signal_KST(self, df):
+        p = self.params
+        val = gf.KST(df['close'].values, p['N1'], p['N2'], p['N3'], p['N4'], p['M'])
+        s = pd.Series(val, index=df.index)
+        df['KST_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'KST_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'KST_signal'] = -1
+        return df
+    
+    def _signal_VI(self, df):
+        p = self.params
+        vi_val, vi_signal = gf.VI(df['close'].values, df['high'].values,
+                                   df['low'].values, p['N'])
+        s1, s2 = pd.Series(vi_val, index=df.index), pd.Series(vi_signal, index=df.index)
+        df['VI_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'VI_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'VI_signal'] = -1
+        return df
+    
+    def _signal_DMA_I(self, df):
+        p = self.params
+        ma_short = gf.MA(df['close'].values, p['N1'])
+        ma_long = gf.MA(df['close'].values, p['N2'])
+        dma_val = ma_short - ma_long
+        ama = gf.MA(dma_val, p['M'])
+        s1, s2 = pd.Series(dma_val, index=df.index), pd.Series(ama, index=df.index)
+        df['DMA_I_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'DMA_I_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'DMA_I_signal'] = -1
+        return df
+    
+    def _signal_ADOSC(self, df):
+        p = self.params
+        close, high, low, volume = (df[c].values for c in ('close', 'high', 'low', 'volume'))
+        # 计算 Accumulation Distribution
+        mfm = ((close - low) - (high - close)) / np.where(high - low > 0, high - low, 1e-10)
+        ad_val = gf.CUM_SUM(mfm * volume)
+        val = gf.ADOSC(ad_val, p['N1'], p['N2'])
+        s = pd.Series(val, index=df.index)
+        df['ADOSC_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'ADOSC_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'ADOSC_signal'] = -1
+        return df
+    
+    def _signal_VAO(self, df):
+        p = self.params
+        vao1, vao2 = gf.VAO(df['close'].values, df['high'].values, df['low'].values,
+                             df['volume'].values, p['N1'], p['N2'])
+        s1, s2 = pd.Series(vao1, index=df.index), pd.Series(vao2, index=df.index)
+        df['VAO_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'VAO_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'VAO_signal'] = -1
+        return df
+    
+    def _signal_KO(self, df):
+        p = self.params
+        val = gf.KO(df['close'].values, df['high'].values, df['low'].values,
+                    df['volume'].values, p['N1'], p['N2'])
+        s = pd.Series(val, index=df.index)
+        df['KO_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'KO_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'KO_signal'] = -1
+        return df
+    
+    def _signal_NVI(self, df):
+        p = self.params
+        val = gf.NVI(df['close'].values, df['volume'].values, p['N'])
+        s = pd.Series(val, index=df.index)
+        df['NVI_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'NVI_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'NVI_signal'] = -1
+        return df
+    
+    def _signal_PVT(self, df):
+        p = self.params
+        pvt, pvt_ma = gf.PVT(df['close'].values, df['volume'].values, p['N1'], p['N2'])
+        s1, s2 = pd.Series(pvt, index=df.index), pd.Series(pvt_ma, index=df.index)
+        df['PVT_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'PVT_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'PVT_signal'] = -1
+        return df
+    
+    def _signal_TMF(self, df):
+        p = self.params
+        val = gf.TMF(df['close'].values, df['high'].values, df['low'].values,
+                     df['volume'].values, p['N'])
+        s = pd.Series(val, index=df.index)
+        df['TMF_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'TMF_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'TMF_signal'] = -1
+        return df
+    
+    def _signal_SI(self, df):
+        p = self.params
+        asi, asima = gf.SI(df['close'].values, df['high'].values, df['low'].values,
+                           df['open'].values, p['N'], p['M'])
+        s1, s2 = pd.Series(asi, index=df.index), pd.Series(asima, index=df.index)
+        df['SI_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'SI_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'SI_signal'] = -1
+        return df
+    
+    def _signal_DO(self, df):
+        n = self.params['N']
+        val = gf.DO(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['DO_signal'] = 0
+        df.loc[self._cross_up(s, 0.5), 'DO_signal'] = 1
+        df.loc[self._cross_down(s, 0.5), 'DO_signal'] = -1
+        return df
+    
+    def _signal_DBCD(self, df):
+        p = self.params
+        val = gf.DBCD(df['close'].values, p['N'], p['M'], p['T'])
+        s = pd.Series(val, index=df.index)
+        df['DBCD_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'DBCD_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'DBCD_signal'] = -1
+        return df
+    
+    def _signal_DZRSI(self, df):
+        p = self.params
+        upper, lower = gf.DZRSI(df['close'].values, p['N'], p['M'], p['PARAM'])
+        rsi = (pd.Series(upper, index=df.index) + pd.Series(lower, index=df.index)) / 2
+        df['DZRSI_signal'] = 0
+        df.loc[self._cross_up(rsi, 40), 'DZRSI_signal'] = 1
+        df.loc[self._cross_down(rsi, 60), 'DZRSI_signal'] = -1
+        return df
+    
+    def _signal_DZCCI(self, df):
+        p = self.params
+        up, dn = gf.DZCCI(df['close'].values, df['high'].values, df['low'].values,
+                           p['N'], p['M'], p['PARAM'])
+        s1, s2 = pd.Series(up, index=df.index), pd.Series(dn, index=df.index)
+        df['DZCCI_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'DZCCI_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'DZCCI_signal'] = -1
+        return df
+    
+    # ------------------- CROSS_THRESHOLD: 固定阈值穿越 -------------------
+    
+    def _signal_UOS(self, df):
+        p = self.params
+        val = gf.UOS(df['close'].values, df['high'].values, df['low'].values,
+                     p['N1'], p['N2'], p['N3'])
+        s = pd.Series(val, index=df.index)
+        df['UOS_signal'] = 0
+        df.loc[self._cross_up(s, 30), 'UOS_signal'] = 1
+        df.loc[self._cross_down(s, 70), 'UOS_signal'] = -1
+        return df
+    
+    def _signal_RWI(self, df):
+        p = self.params
+        rwih, rwil = gf.RWI(df['close'].values, df['high'].values, df['low'].values, p['N'])
+        s1, s2 = pd.Series(rwih, index=df.index), pd.Series(rwil, index=df.index)
+        df['RWI_signal'] = 0
+        df.loc[self._cross_up(s1, 1), 'RWI_signal'] = 1
+        df.loc[self._cross_down(s2, 1), 'RWI_signal'] = -1
+        return df
+    
+    def _signal_SMI(self, df):
+        p = self.params
+        smi_val, smi_signal = gf.SMI(df['close'].values, df['high'].values,
+                                       df['low'].values,
+                                       p['N1'], p['N2'], p['N3'])
+        s1, s2 = pd.Series(smi_val, index=df.index), pd.Series(smi_signal, index=df.index)
+        df['SMI_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'SMI_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'SMI_signal'] = -1
+        return df
+    
+    def _signal_STC(self, df):
+        p = self.params
+        val = gf.STC(df['close'].values, df['high'].values, df['low'].values,
+                     p['N1'], p['N2'], p['N'])
+        s = pd.Series(val, index=df.index)
+        df['STC_signal'] = 0
+        df.loc[self._cross_up(s, 25), 'STC_signal'] = 1
+        df.loc[self._cross_down(s, 75), 'STC_signal'] = -1
+        return df
+    
+    def _signal_RVI(self, df):
+        p = self.params
+        val = gf.RVI(df['close'].values, p['N1'], p['N2'])
+        s = pd.Series(val, index=df.index)
+        df['RVI_signal'] = 0
+        df.loc[self._cross_up(s, 40), 'RVI_signal'] = 1
+        df.loc[self._cross_down(s, 60), 'RVI_signal'] = -1
+        return df
+    
+    def _signal_RSIS(self, df):
+        p = self.params
+        val = gf.RSIS(df['close'].values, p['N'], p['M'])
+        s = pd.Series(val, index=df.index)
+        df['RSIS_signal'] = 0
+        df.loc[self._cross_up(s, 40), 'RSIS_signal'] = 1
+        df.loc[self._cross_down(s, 60), 'RSIS_signal'] = -1
+        return df
+    
+    def _signal_RSIH(self, df):
+        p = self.params
+        val = gf.RSIH(df['close'].values, p['N1'], p['N2'])
+        s = pd.Series(val, index=df.index)
+        df['RSIH_signal'] = 0
+        df.loc[self._cross_up(s, 40), 'RSIH_signal'] = 1
+        df.loc[self._cross_down(s, 60), 'RSIH_signal'] = -1
+        return df
+    
+    def _signal_BIAS36(self, df):
+        n = self.params['N']
+        val = gf.BIAS36(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['BIAS36_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'BIAS36_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'BIAS36_signal'] = -1
+        return df
+    
+    def _signal_CV(self, df):
+        p = self.params
+        val = gf.CV(df['close'].values, df['high'].values, df['low'].values, p['N'])
+        s = pd.Series(val, index=df.index)
+        df['CV_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'CV_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'CV_signal'] = -1
+        return df
+    
+    def _signal_ARBR(self, df):
+        p = self.params
+        ar, br = gf.ARBR(df['close'].values, df['high'].values, df['low'].values,
+                         df['open'].values, p['N'])
+        sar = pd.Series(ar, index=df.index)
+        df['ARBR_signal'] = 0
+        df.loc[self._cross_up(sar, 80), 'ARBR_signal'] = 1
+        df.loc[self._cross_down(sar, 120), 'ARBR_signal'] = -1
+        return df
+    
+    def _signal_ADXR(self, df):
+        n = self.params['N']
+        # 计算 ADX (Average Directional Index)
+        high, low, close = df['high'].values, df['low'].values, df['close'].values
+        # TR (True Range)
+        prev_close = gf.REF(close, 1)
+        tr = np.maximum(high - low, np.maximum(np.abs(high - prev_close), np.abs(low - prev_close)))
+        # +DM, -DM
+        up_move = high - gf.REF(high, 1)
+        down_move = gf.REF(low, 1) - low
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+        # Smooth
+        atr = gf.MA(tr, n)
+        di_plus = 100 * gf.MA(plus_dm, n) / np.where(atr > 0, atr, 1e-10)
+        di_minus = 100 * gf.MA(minus_dm, n) / np.where(atr > 0, atr, 1e-10)
+        dx = 100 * np.abs(di_plus - di_minus) / np.where(di_plus + di_minus > 0, di_plus + di_minus, 1e-10)
+        adx = gf.MA(dx, n)
+        adxr = gf.ADXR(adx, n)
+        s = pd.Series(adxr, index=df.index)
+        df['ADXR_signal'] = 0
+        df.loc[self._cross_up(s, 25), 'ADXR_signal'] = 1
+        df.loc[self._cross_down(s, 20), 'ADXR_signal'] = -1
+        return df
+    
+    # ------------------- CROSS_MA: 价格上穿/下穿均线 -------------------
+    
+    def _signal_WMA_M(self, df):
+        n = self.params['N']
+        val = gf.WMA(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['WMA_M_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'WMA_M_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'WMA_M_signal'] = -1
+        return df
+    
+    def _signal_HMA(self, df):
+        n = self.params['N']
+        half_n = max(n // 2, 1)
+        wma_half = gf.WMA(df['close'].values, half_n)
+        wma_full = gf.WMA(df['close'].values, n)
+        hull = gf.WMA(2 * wma_half - wma_full, int(max(np.sqrt(n), 1)))
+        s = pd.Series(hull, index=df.index)
+        df['HMA_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'HMA_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'HMA_signal'] = -1
+        return df
+    
+    def _signal_HULLMA(self, df):
+        n = self.params['N']
+        val = gf.HULLMA(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['HULLMA_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'HULLMA_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'HULLMA_signal'] = -1
+        return df
+    
+    def _signal_DC(self, df):
+        n = self.params['N']
+        upper, lower, mid = gf.DC(df['high'].values, df['low'].values, n)
+        s_upper = pd.Series(upper, index=df.index)
+        s_lower = pd.Series(lower, index=df.index)
+        df['DC_signal'] = 0
+        df.loc[df['close'] > s_upper, 'DC_signal'] = 1
+        df.loc[df['close'] < s_lower, 'DC_signal'] = -1
+        return df
+    
+    def _signal_VIDYA(self, df):
+        n = self.params['N']
+        val = gf.VIDYA(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['VIDYA_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'VIDYA_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'VIDYA_signal'] = -1
+        return df
+    
+    def _signal_DEMA(self, df):
+        n = self.params['N']
+        val = gf.DEMA(df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['DEMA_signal'] = 0
+        df.loc[self._cross_over(df['close'], s), 'DEMA_signal'] = 1
+        df.loc[self._cross_under(df['close'], s), 'DEMA_signal'] = -1
+        return df
+    
+    def _signal_COPP(self, df):
+        p = self.params
+        val = gf.COPP(df['close'].values, p['N1'], p['N2'], p['M'])
+        s = pd.Series(val, index=df.index)
+        df['COPP_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'COPP_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'COPP_signal'] = -1
+        return df
+    
+    def _signal_ENV(self, df):
+        p = self.params
+        upper, lower = gf.ENV(df['close'].values, p['N'], p['PARAM'])
+        s_upper = pd.Series(upper, index=df.index)
+        s_lower = pd.Series(lower, index=df.index)
+        df['ENV_signal'] = 0
+        df.loc[df['close'] > s_upper, 'ENV_signal'] = 1
+        df.loc[df['close'] < s_lower, 'ENV_signal'] = -1
+        return df
+    
+    def _signal_HLMA(self, df):
+        p = self.params
+        hma, lma = gf.HLMA(df['high'].values, df['low'].values, p['N1'], p['N2'])
+        s1, s2 = pd.Series(hma, index=df.index), pd.Series(lma, index=df.index)
+        df['HLMA_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'HLMA_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'HLMA_signal'] = -1
+        return df
+    
+    # ------------------- CROSS_LINE: 两线交叉 -------------------
+    
+    def _signal_APZ(self, df):
+        p = self.params
+        upper, lower = gf.APZ(df['close'].values, df['high'].values, df['low'].values,
+                              p['N'], p['M'], p['PARAM'])
+        s_upper = pd.Series(upper, index=df.index)
+        s_lower = pd.Series(lower, index=df.index)
+        df['APZ_signal'] = 0
+        df.loc[df['close'] > s_upper, 'APZ_signal'] = 1
+        df.loc[df['close'] < s_lower, 'APZ_signal'] = -1
+        return df
+    
+    def _signal_KC(self, df):
+        p = self.params
+        upper, lower = gf.KC(df['close'].values, df['high'].values, df['low'].values,
+                             p['N'], p['M'])
+        s_upper = pd.Series(upper, index=df.index)
+        s_lower = pd.Series(lower, index=df.index)
+        df['KC_signal'] = 0
+        df.loc[df['close'] > s_upper, 'KC_signal'] = 1
+        df.loc[df['close'] < s_lower, 'KC_signal'] = -1
+        return df
+    
+    def _signal_ARRON(self, df):
+        n = self.params['N']
+        up, down, osc = gf.Arron(df['close'].values, df['high'].values, df['low'].values, n)
+        s_up, s_down = pd.Series(up, index=df.index), pd.Series(down, index=df.index)
+        df['ARRON_signal'] = 0
+        df.loc[self._cross_over(s_up, s_down), 'ARRON_signal'] = 1
+        df.loc[self._cross_under(s_up, s_down), 'ARRON_signal'] = -1
+        return df
+    
+    # ------------------- 成交量指标 -------------------
+    
+    def _signal_MAAMT(self, df):
+        n = self.params['N']
+        val = gf.MAAMT(df['volume'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['MAAMT_signal'] = 0
+        df.loc[self._cross_over(df['volume'], s), 'MAAMT_signal'] = 1
+        df.loc[self._cross_under(df['volume'], s), 'MAAMT_signal'] = -1
+        return df
+    
+    def _signal_SROCVOL(self, df):
+        p = self.params
+        val = gf.SROCVOL(df['volume'].values, p['N'], p['M'])
+        s = pd.Series(val, index=df.index)
+        df['SROCVOL_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'SROCVOL_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'SROCVOL_signal'] = -1
+        return df
+    
+    def _signal_BIASVOL(self, df):
+        n = self.params['N']
+        val = gf.BIASVOL(df['volume'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['BIASVOL_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'BIASVOL_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'BIASVOL_signal'] = -1
+        return df
+    
+    def _signal_MACDVOL(self, df):
+        p = self.params
+        macd_val, macd_signal = gf.MACDVOL(df['volume'].values, p['N1'], p['N2'], p['N3'])
+        s1, s2 = pd.Series(macd_val, index=df.index), pd.Series(macd_signal, index=df.index)
+        df['MACDVOL_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'MACDVOL_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'MACDVOL_signal'] = -1
+        return df
+    
+    def _signal_ROCVOL(self, df):
+        n = self.params['N']
+        val = gf.ROCVOL(df['volume'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['ROCVOL_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'ROCVOL_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'ROCVOL_signal'] = -1
+        return df
+    
+    def _signal_RSIV(self, df):
+        p = self.params
+        val = gf.RSIV(df['volume'].values, df['close'].values, p['N'])
+        s = pd.Series(val, index=df.index)
+        df['RSIV_signal'] = 0
+        df.loc[self._cross_up(s, 40), 'RSIV_signal'] = 1
+        df.loc[self._cross_down(s, 60), 'RSIV_signal'] = -1
+        return df
+    
+    def _signal_AMV(self, df):
+        p = self.params
+        amv1, amv2 = gf.AMV(df['open'].values, df['close'].values, df['volume'].values,
+                            p['N1'], p['N2'])
+        s1, s2 = pd.Series(amv1, index=df.index), pd.Series(amv2, index=df.index)
+        df['AMV_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'AMV_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'AMV_signal'] = -1
+        return df
+    
+    def _signal_VRAMT(self, df):
+        n = self.params['N']
+        val = gf.VRAMT(df['amount'].values, df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['VRAMT_signal'] = 0
+        df.loc[self._cross_up(s, 250), 'VRAMT_signal'] = 1
+        df.loc[self._cross_down(s, 300), 'VRAMT_signal'] = -1
+        return df
+    
+    def _signal_CMF_V(self, df):
+        n = self.params.get('N', 20)
+        val = gf.CMF(df['close'].values, df['high'].values, df['low'].values,
+                     df['volume'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['CMF_V_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'CMF_V_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'CMF_V_signal'] = -1
+        return df
+    
+    def _signal_PVI(self, df):
+        p = self.params
+        val = gf.PVI(df['close'].values, df['volume'].values, p['N'])
+        s = pd.Series(val, index=df.index)
+        df['PVI_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'PVI_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'PVI_signal'] = -1
+        return df
+    
+    # ======================================================================
+    # FB, ASI, CMF, ATR, WAD — 这些函数的 gf_factors 返回格式特殊，单独处理
+    # ======================================================================
+    
+    def _signal_FB(self, df):
+        p = self.params
+        upper, lower = gf.FB(df['close'].values, df['high'].values, df['low'].values,
+                             p['N'], p['PARAM'])
+        df['FB_signal'] = 0
+        df.loc[df['close'] > upper, 'FB_signal'] = 1
+        df.loc[df['close'] < lower, 'FB_signal'] = -1
+        return df
+    
+    def _signal_ASI(self, df):
+        p = self.params
+        # ASI 需要一个外部的 ASIMA 作为 trigger 线
+        n_short = max(p['M'] // 2, 1)
+        asi_val = gf.ASI(df['close'].values, df['high'].values, df['low'].values,
+                         df['open'].values, p['N'], p['M'])
+        # gf.ASI returns ASI only for the original call; SI is the combined version
+        # 改用 SI 函数（已含 ASIMA）
+        asi, asima = gf.SI(df['close'].values, df['high'].values, df['low'].values,
+                           df['open'].values, p['N'], p['M'])
+        s1, s2 = pd.Series(asi, index=df.index), pd.Series(asima, index=df.index)
+        df['ASI_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'ASI_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'ASI_signal'] = -1
+        return df
+    
+    def _signal_CMF(self, df):
+        n = self.params['N']
+        val = gf.CMF(df['close'].values, df['high'].values, df['low'].values,
+                     df['volume'].values, n)
+        s = pd.Series(val, index=df.index)
+        df['CMF_signal'] = 0
+        df.loc[self._cross_up(s, 0), 'CMF_signal'] = 1
+        df.loc[self._cross_down(s, 0), 'CMF_signal'] = -1
+        return df
+    
+    def _signal_ATR(self, df):
+        n = self.params['N']
+        val = gf.ATR(df['high'].values, df['low'].values, df['close'].values, n)
+        s = pd.Series(val, index=df.index)
+        # ATR 本身是波动率指标，用 ATR 与其均线的交叉来产生信号
+        sma = gf.MA(val, n)
+        s_ma = pd.Series(sma, index=df.index)
+        df['ATR_signal'] = 0
+        df.loc[self._cross_over(s, s_ma), 'ATR_signal'] = 1
+        df.loc[self._cross_under(s, s_ma), 'ATR_signal'] = -1
+        return df
+    
+    def _signal_WAD(self, df):
+        p = self.params
+        wad, wad_ma = gf.WAD(df['close'].values, df['high'].values, df['low'].values,
+                              df['volume'].values, p['N'])
+        s1, s2 = pd.Series(wad, index=df.index), pd.Series(wad_ma, index=df.index)
+        df['WAD_signal'] = 0
+        df.loc[self._cross_over(s1, s2), 'WAD_signal'] = 1
+        df.loc[self._cross_under(s1, s2), 'WAD_signal'] = -1
+        return df
 
 class ComboGFSignal(BaseSignal):
     """

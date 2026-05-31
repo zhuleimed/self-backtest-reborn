@@ -181,7 +181,7 @@ python run_optimize.py \
 
 ### 唯一策略类：GFSignal
 
-`signals/gf.py` 中 `GFSignal` 是**唯一的策略实现**。所有 97 个指标通过 `indicator` 参数选择，内部通过 `_signal_{INDICATOR_NAME}()` 方法分发。
+`signals/gf.py` 中 `GFSignal` 是**唯一的策略实现**。全部 **97 个指标**均已实现完整的 `_signal_{INDICATOR_NAME}()` 方法，可通过 `--strategies ALL` 一键全量对比。
 
 ```python
 # 关键设计
@@ -276,7 +276,7 @@ class ComboGFSignal(BaseSignal):
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `signals/gf_factors.py` | ~2377 | 底层指标计算，numpy 实现（REF/SMA/EMA/HHV/LLV 等 143+ 函数） |
-| `signals/gf.py` | ~700 | 策略编排，97 个 `_signal_XXX()` 方法 |
+| `signals/gf.py` | ~1378 | 策略编排，全部 97 个 `_signal_XXX()` 方法已实现 |
 | `core/engine.py` | ~320 | 5 步流水线编排，配置 dataclass |
 | `core/equity_curve.py` | ~280 | 资金曲线 + 交易记录，滑点/佣金/印花税 |
 | `core/risk_manager.py` | ~240 | 固定止盈止损 + 移动止损 + 涨跌停 |

@@ -237,6 +237,7 @@ python run_compare.py \
 
 # 全量对比所有97个指标，仅显示 Top 5 图表
 python run_compare.py --strategies ALL --stocks 000012 --top-n 5
+python run_compare.py --strategies ALL --stocks 000012 --start 2024-06-01 --end 2024-12-31 --workers 4 --top-n 5
 ```
 
 ### 对比参数
